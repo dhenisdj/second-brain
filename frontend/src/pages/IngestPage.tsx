@@ -77,8 +77,8 @@ export default function IngestPage() {
       key: 'git',
       label: 'Git 记录',
       description: settings?.git_repo_paths
-        ? '读取已配置仓库最近 2 天的提交记录。'
-        : '需要先在配置页填写 Git 仓库路径。',
+        ? '读取已配置仓库或工作区最近 2 天的提交记录。'
+        : '需要先在配置页填写 Git 仓库或工作区路径。',
       enabled: settings?.git_activity_enabled ?? false,
       ready: !!settings?.git_activity_enabled && !!settings?.git_repo_paths?.trim(),
     },

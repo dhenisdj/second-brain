@@ -8,8 +8,22 @@ from urllib.parse import quote
 FIELD_SEP = "\x1f"
 RECORD_SEP = "\x1e"
 GIT_LOG_FORMAT = f"%H%x1f%an%x1f%ae%x1f%aI%x1f%s%x1f%b%x1e"
-MAX_REPOS = 20
+MAX_CONFIGURED_PATHS = 20
+MAX_REPOS = 100
+DISCOVERY_MAX_DEPTH = 5
 GIT_TIMEOUT_SECONDS = 20
+SKIP_DISCOVERY_DIRS = {
+    ".git",
+    ".hg",
+    ".svn",
+    ".local",
+    ".venv",
+    "__pycache__",
+    "build",
+    "dist",
+    "node_modules",
+    "venv",
+}
 
 
 def parse_git_repo_paths(raw_paths: str | list[str] | None) -> list[str]:
@@ -28,7 +42,7 @@ def parse_git_repo_paths(raw_paths: str | list[str] | None) -> list[str]:
             continue
         seen.add(path)
         result.append(path)
-        if len(result) >= MAX_REPOS:
+        if len(result) >= MAX_CONFIGURED_PATHS:
             break
     return result
 
@@ -54,6 +68,89 @@ def _resolve_repo_root(raw_path: str) -> Path:
         detail = (result.stderr or result.stdout or "").strip()
         raise ValueError(f"不是有效 Git 仓库：{raw_path}{f'（{detail}）' if detail else ''}")
     return Path(result.stdout.strip()).resolve()
+
+
+def _looks_like_git_repo(path: Path) -> bool:
+    return (path / ".git").exists()
+
+
+def _discover_repo_dirs(root: Path) -> list[Path]:
+    discovered: list[Path] = []
+    stack: list[tuple[Path, int]] = [(root, 0)]
+
+    while stack and len(discovered) < MAX_REPOS:
+        current, depth = stack.pop()
+        if current != root and current.name in SKIP_DISCOVERY_DIRS:
+            continue
+
+        if _looks_like_git_repo(current):
+            discovered.append(current)
+            if current != root:
+                continue
+
+        if depth >= DISCOVERY_MAX_DEPTH:
+            continue
+
+        try:
+            children = [child for child in current.iterdir() if child.is_dir() and not child.is_symlink()]
+        except (OSError, PermissionError):
+            continue
+
+        for child in sorted(children, reverse=True):
+            if child.name not in SKIP_DISCOVERY_DIRS:
+                stack.append((child, depth + 1))
+
+    return discovered
+
+
+def _resolve_configured_repositories(raw_paths: list[str]) -> tuple[list[Path], list[str]]:
+    repo_roots: list[Path] = []
+    warnings: list[str] = []
+    seen: set[Path] = set()
+
+    def add_repo_root(path: Path):
+        if path not in seen and len(repo_roots) < MAX_REPOS:
+            repo_roots.append(path)
+            seen.add(path)
+
+    for raw_path in raw_paths:
+        configured_path = Path(raw_path).expanduser()
+        if not configured_path.exists():
+            warnings.append(f"路径不存在：{raw_path}")
+            continue
+        if not configured_path.is_dir():
+            warnings.append(f"路径不是目录：{raw_path}")
+            continue
+
+        found_for_path = False
+        try:
+            add_repo_root(_resolve_repo_root(str(configured_path)))
+            found_for_path = True
+        except FileNotFoundError as exc:
+            if getattr(exc, "filename", None) == "git":
+                raise FileNotFoundError("未找到 git 命令，请先安装 Git")
+            warnings.append(str(exc))
+        except Exception:
+            pass
+
+        for repo_dir in _discover_repo_dirs(configured_path):
+            try:
+                add_repo_root(_resolve_repo_root(str(repo_dir)))
+                found_for_path = True
+            except FileNotFoundError as exc:
+                if getattr(exc, "filename", None) == "git":
+                    raise FileNotFoundError("未找到 git 命令，请先安装 Git")
+                warnings.append(str(exc))
+            except Exception as exc:
+                warnings.append(str(exc))
+
+        if not found_for_path:
+            warnings.append(f"未在目录下发现 Git 仓库：{raw_path}")
+
+    if len(repo_roots) >= MAX_REPOS:
+        warnings.append(f"已达到最多 {MAX_REPOS} 个 Git 仓库的采集上限")
+
+    return repo_roots, warnings
 
 
 def _get_remote_url(repo_root: Path) -> str | None:
@@ -141,32 +238,19 @@ def _parse_log_output(repo_root: Path, repo_name: str, remote_url: str | None, o
 
 def collect_git_activity(repo_paths: list[str], days: int = 2, author_filter: str | None = None) -> dict:
     if not repo_paths:
-        raise ValueError("请先在配置页填写 Git 仓库路径")
+        raise ValueError("请先在配置页填写 Git 仓库或工作区路径")
 
     days = max(1, int(days or 1))
     now = datetime.now().astimezone()
     since = now - timedelta(days=days)
     author_filter = (author_filter or "").strip()
 
+    repo_roots, warnings = _resolve_configured_repositories(repo_paths[:MAX_CONFIGURED_PATHS])
     events: list[dict] = []
-    warnings: list[str] = []
     repo_results: list[dict] = []
     seen_roots: set[Path] = set()
 
-    for raw_path in repo_paths[:MAX_REPOS]:
-        try:
-            repo_root = _resolve_repo_root(raw_path)
-        except FileNotFoundError as exc:
-            if getattr(exc, "filename", None) == "git":
-                raise FileNotFoundError("未找到 git 命令，请先安装 Git")
-            warnings.append(str(exc))
-            repo_results.append({"path": raw_path, "status": "failed", "count": 0, "message": str(exc)})
-            continue
-        except Exception as exc:
-            warnings.append(str(exc))
-            repo_results.append({"path": raw_path, "status": "failed", "count": 0, "message": str(exc)})
-            continue
-
+    for repo_root in repo_roots:
         if repo_root in seen_roots:
             continue
         seen_roots.add(repo_root)

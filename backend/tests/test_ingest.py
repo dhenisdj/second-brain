@@ -363,7 +363,7 @@ class TestGCalIngest:
         data = resp.json()
         git_result = next(item for item in data["source_results"] if item["source"] == "git")
         assert git_result["status"] == "misconfigured"
-        assert "Git 仓库路径" in git_result["message"]
+        assert "Git 仓库或工作区路径" in git_result["message"]
 
 
 class TestEventQuery:

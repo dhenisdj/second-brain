@@ -179,7 +179,7 @@ async def _ingest_git_impl(req: GitRequest, db: AsyncSession, settings: dict | N
 
     repo_paths = parse_git_repo_paths(settings.get("git_repo_paths", ""))
     if not repo_paths:
-        raise HTTPException(status_code=400, detail="请先在配置页填写 Git 仓库路径")
+        raise HTTPException(status_code=400, detail="请先在配置页填写 Git 仓库或工作区路径")
 
     try:
         collected = collect_git_activity(
@@ -195,7 +195,10 @@ async def _ingest_git_impl(req: GitRequest, db: AsyncSession, settings: dict | N
         raise HTTPException(status_code=500, detail=f"Git 记录采集失败: {e}")
 
     repositories = collected.get("repositories", [])
-    if not collected["events"] and repositories and all(item.get("status") != "success" for item in repositories):
+    if not collected["events"] and (
+        (repositories and all(item.get("status") != "success" for item in repositories))
+        or (not repositories and collected.get("warnings"))
+    ):
         detail = "；".join(collected.get("warnings", [])) or "未读取到有效 Git 仓库"
         raise HTTPException(status_code=400, detail=detail)
 
@@ -296,7 +299,7 @@ async def ingest_configured_sources(req: ConfiguredSourcesRequest, db: AsyncSess
     if git_enabled:
         git_repo_paths = parse_git_repo_paths(settings.get("git_repo_paths", ""))
         if not git_repo_paths:
-            message = "请先在配置页填写 Git 仓库路径"
+            message = "请先在配置页填写 Git 仓库或工作区路径"
             warnings.append(f"Git 记录：{message}")
             source_results.append({
                 "source": "git",

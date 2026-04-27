@@ -431,7 +431,7 @@ export default function SettingsPage() {
             <SourceCard
               icon={<GitBranch className="w-4 h-4 text-slate-700" />}
               title="Git 记录"
-              description="读取本地 Git 仓库最近 2 天的提交记录。"
+              description="读取本地 Git 仓库或工作区目录最近 2 天的提交记录。"
               status={gitStatus}
               statusTone={
                 !form.git_activity_enabled
@@ -445,15 +445,15 @@ export default function SettingsPage() {
             >
               <div className="space-y-3">
                 <div>
-                  <label className="block text-xs font-medium text-gray-500 mb-1">仓库路径</label>
+                  <label className="block text-xs font-medium text-gray-500 mb-1">仓库或工作区路径</label>
                   <textarea
                     value={form.git_repo_paths ?? ''}
                     onChange={e => setForm({ ...form, git_repo_paths: e.target.value })}
-                    placeholder={'/Users/you/project-a\n/Users/you/project-b'}
+                    placeholder={'/Users/you/workspace\n/Users/you/project-a'}
                     rows={4}
                     className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm outline-none focus:ring-1 focus:ring-blue-500 resize-none font-mono"
                   />
-                  <p className="text-xs text-gray-400 mt-1">一行一个本地 Git 仓库路径；最多采集前 20 个仓库。</p>
+                  <p className="text-xs text-gray-400 mt-1">一行一个路径；可以填单个仓库，也可以填工作区目录，系统会自动发现子仓库。</p>
                 </div>
                 <div>
                   <label className="block text-xs font-medium text-gray-500 mb-1">作者过滤</label>
