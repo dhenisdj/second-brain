@@ -1,0 +1,29 @@
+__pycache__/
+*.pyc
+*.pyo
+venv/
+.env
+*.db
+*.db-*
+*.db.*
+*.sqlite
+*.sqlite3
+.pytest_cache/
+node_modules/
+dist/
+build/
+
+# Local-only runtime data, private credentials, generated media, and build outputs.
+.local/
+logs/
+.build/
+backend/credentials
+backend/credentials/
+backend/data/
+*.tsbuildinfo
+.DS_Store
+
+# Large generated/demo artifacts should stay out of source control.
+*.mov
+*.mp4
+*.pptx
