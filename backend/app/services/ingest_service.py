@@ -127,6 +127,56 @@ async def ingest_gcal(db: AsyncSession, events: list[dict]) -> int:
     return count
 
 
+async def ingest_git(db: AsyncSession, events: list[dict]) -> dict:
+    count = 0
+    skipped = 0
+    dates = []
+    for ev in events:
+        ts = datetime.fromisoformat(ev["timestamp"])
+        url = ev.get("url")
+        content = ev.get("content")
+
+        filters = [
+            Event.source == "git",
+            Event.timestamp == ts,
+            Event.title == ev["title"],
+        ]
+        if url:
+            filters.append(Event.url == url)
+        else:
+            filters.append(Event.content == content)
+
+        existing = await db.execute(select(Event).where(*filters))
+        existing_event = existing.scalar_one_or_none()
+        raw_data = json.dumps(ev, ensure_ascii=False)
+        if existing_event:
+            existing_event.content = content
+            existing_event.url = url
+            existing_event.raw_data = raw_data
+            skipped += 1
+            continue
+
+        event = Event(
+            source="git",
+            timestamp=ts,
+            title=ev["title"],
+            content=content,
+            url=url,
+            raw_data=raw_data,
+        )
+        db.add(event)
+        dates.append(ts.date().isoformat())
+        count += 1
+    await db.commit()
+
+    unique_dates = sorted(set(dates))
+    return {
+        "imported_count": count,
+        "skipped_count": skipped,
+        "date_range": [unique_dates[0], unique_dates[-1]] if unique_dates else [],
+    }
+
+
 def _event_to_dict(e, analysis: Analysis | None = None) -> dict:
     item = {
         "id": e.id,

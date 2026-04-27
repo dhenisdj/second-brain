@@ -4,7 +4,7 @@
 
 ## 功能
 
-- **数据采集**：Chrome 浏览历史导入 / Google Calendar 采集 / 手动输入
+- **数据采集**：Chrome/Safari 浏览历史导入 / Google Calendar 采集 / Git 提交记录采集 / 手动输入
 - **意图理解**：AI 自动推断活动类别、意图和主题标签
 - **每日总结**：时间线、事项进展、新知识提取、时间分布统计
 - **知识图谱**：增量构建个人知识网络，自动关联项目/概念/工具
@@ -57,6 +57,7 @@ python -m pytest e2e/ -v
 | 方法 | 路径 | 说明 |
 |---|---|---|
 | POST | `/api/ingest/chrome` | 上传 Chrome 浏览历史 |
+| POST | `/api/ingest/git` | 采集已配置仓库的 Git 提交记录 |
 | POST | `/api/ingest/manual` | 手动输入活动记录 |
 | GET | `/api/events` | 查询活动事件 |
 | POST | `/api/analysis/run` | 运行 AI 意图分析 |

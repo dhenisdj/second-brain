@@ -194,6 +194,7 @@ class TestGCalIngest:
                 "chrome_history_enabled": False,
                 "safari_history_enabled": False,
                 "google_calendar_enabled": False,
+                "git_activity_enabled": False,
                 "google_user_email": "",
             }
 
@@ -291,6 +292,78 @@ class TestGCalIngest:
         assert chrome_result["status"] == "disabled"
         assert safari_result["status"] == "success"
         assert safari_result["imported_count"] == 1
+
+    async def test_collect_configured_sources_supports_git_only(self, client, monkeypatch):
+        async def fake_get_all_settings(_db):
+            return {
+                "chrome_history_enabled": False,
+                "safari_history_enabled": False,
+                "google_calendar_enabled": False,
+                "git_activity_enabled": True,
+                "git_repo_paths": "/tmp/project-a",
+                "git_author_filter": "tester@example.com",
+                "google_user_email": "",
+            }
+
+        def fake_collect_git_activity(repo_paths, days, author_filter=None):
+            assert repo_paths == ["/tmp/project-a"]
+            assert days == 2
+            assert author_filter == "tester@example.com"
+            return {
+                "events": [
+                    {
+                        "source": "git",
+                        "timestamp": "2026-04-03T11:20:00",
+                        "title": "project-a: add git source",
+                        "content": "commit abc12345 | author Tester <tester@example.com>",
+                        "url": "https://git.example.com/team/project-a/-/commit/abc12345",
+                        "commit_hash": "abc12345",
+                        "repo_name": "project-a",
+                        "repo_path": "/tmp/project-a",
+                    }
+                ],
+                "date_range": ["2026-04-03", "2026-04-03"],
+                "warnings": [],
+                "repositories": [{"path": "/tmp/project-a", "status": "success", "count": 1}],
+            }
+
+        monkeypatch.setattr("app.routers.settings._get_all_settings", fake_get_all_settings)
+        monkeypatch.setattr("app.routers.ingest.collect_git_activity", fake_collect_git_activity)
+
+        resp = await client.post("/api/ingest/collect", json={})
+
+        assert resp.status_code == 200
+        data = resp.json()
+        git_result = next(item for item in data["source_results"] if item["source"] == "git")
+        assert git_result["status"] == "success"
+        assert git_result["imported_count"] == 1
+        assert data["date_range"] == ["2026-04-03", "2026-04-03"]
+
+        events_resp = await client.get("/api/events", params={"date": "2026-04-03", "source": "git"})
+        assert events_resp.status_code == 200
+        assert events_resp.json()["items"][0]["source"] == "git"
+
+    async def test_collect_configured_sources_marks_misconfigured_git_without_paths(self, client, monkeypatch):
+        async def fake_get_all_settings(_db):
+            return {
+                "chrome_history_enabled": False,
+                "safari_history_enabled": False,
+                "google_calendar_enabled": False,
+                "git_activity_enabled": True,
+                "git_repo_paths": "",
+                "git_author_filter": "",
+                "google_user_email": "",
+            }
+
+        monkeypatch.setattr("app.routers.settings._get_all_settings", fake_get_all_settings)
+
+        resp = await client.post("/api/ingest/collect", json={})
+
+        assert resp.status_code == 200
+        data = resp.json()
+        git_result = next(item for item in data["source_results"] if item["source"] == "git")
+        assert git_result["status"] == "misconfigured"
+        assert "Git 仓库路径" in git_result["message"]
 
 
 class TestEventQuery:

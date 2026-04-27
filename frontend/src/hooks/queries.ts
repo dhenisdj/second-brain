@@ -65,6 +65,11 @@ export const useIngestGCal = () => {
   return useMutation({ mutationFn: (days?: number) => api.ingestGCal(days), onSuccess: () => qc.invalidateQueries({ queryKey: ['events'] }) })
 }
 
+export const useIngestGit = () => {
+  const qc = useQueryClient()
+  return useMutation({ mutationFn: (days?: number) => api.ingestGit(days), onSuccess: () => qc.invalidateQueries({ queryKey: ['events'] }) })
+}
+
 export const useCollectConfiguredSources = () => {
   const qc = useQueryClient()
   return useMutation({

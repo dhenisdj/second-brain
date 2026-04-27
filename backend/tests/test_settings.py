@@ -19,6 +19,9 @@ class TestSettings:
         assert data["chrome_history_enabled"] is True
         assert data["safari_history_enabled"] is True
         assert data["google_calendar_enabled"] is False
+        assert data["git_activity_enabled"] is False
+        assert data["git_repo_paths"] == ""
+        assert data["git_author_filter"] == ""
         assert data["openai_api_key"] == ""
         assert data["deepseek_api_key"] == ""
         assert data["nvidia_api_key"] == ""
@@ -106,6 +109,9 @@ class TestSettings:
             "chrome_history_enabled": False,
             "safari_history_enabled": True,
             "google_calendar_enabled": True,
+            "git_activity_enabled": True,
+            "git_repo_paths": "/Users/test/project",
+            "git_author_filter": "tester@example.com",
         })
 
         assert resp.status_code == 200
@@ -113,6 +119,9 @@ class TestSettings:
         assert data["chrome_history_enabled"] is False
         assert data["safari_history_enabled"] is True
         assert data["google_calendar_enabled"] is True
+        assert data["git_activity_enabled"] is True
+        assert data["git_repo_paths"] == "/Users/test/project"
+        assert data["git_author_filter"] == "tester@example.com"
 
     async def test_legacy_browser_switch_updates_both_browser_sources(self, client):
         resp = await client.put("/api/settings", json={

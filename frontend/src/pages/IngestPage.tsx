@@ -16,6 +16,7 @@ const SOURCE_LABELS: Record<string, string> = {
   chrome: 'Chrome',
   safari: 'Safari',
   gcal: '日历',
+  git: 'Git',
   manual: '手动',
 }
 
@@ -71,6 +72,15 @@ export default function IngestPage() {
       description: '读取本地 Safari 最近 2 天的浏览记录。',
       enabled: settings?.safari_history_enabled ?? false,
       ready: settings?.safari_history_enabled ?? false,
+    },
+    {
+      key: 'git',
+      label: 'Git 记录',
+      description: settings?.git_repo_paths
+        ? '读取已配置仓库最近 2 天的提交记录。'
+        : '需要先在配置页填写 Git 仓库路径。',
+      enabled: settings?.git_activity_enabled ?? false,
+      ready: !!settings?.git_activity_enabled && !!settings?.git_repo_paths?.trim(),
     },
     {
       key: 'gcal',
@@ -231,6 +241,7 @@ export default function IngestPage() {
             {[
               { value: '', label: '全部' },
               { value: 'gcal', label: '日历' },
+              { value: 'git', label: 'Git' },
               { value: 'browser', label: '浏览器' },
               { value: 'manual', label: '手动' },
             ].map(filter => (

@@ -1,5 +1,5 @@
 import { useRef, useState, useEffect, type ReactNode } from 'react'
-import { Settings, Save, Loader2, Globe, Calendar, Upload, ExternalLink } from 'lucide-react'
+import { Settings, Save, Loader2, Globe, Calendar, Upload, ExternalLink, GitBranch } from 'lucide-react'
 import axios from 'axios'
 import toast from 'react-hot-toast'
 import { useSettings, useUpdateSettings, useUploadGoogleCredentials, useStartGoogleCalendarAuthorization } from '../hooks/queries'
@@ -113,6 +113,9 @@ export default function SettingsPage() {
       chrome_history_enabled: form.chrome_history_enabled,
       safari_history_enabled: form.safari_history_enabled,
       google_calendar_enabled: form.google_calendar_enabled,
+      git_activity_enabled: form.git_activity_enabled,
+      git_repo_paths: form.git_repo_paths,
+      git_author_filter: form.git_author_filter,
     }
     for (const key of Object.keys(secretDrafts) as SecretFieldKey[]) {
       const value = secretDrafts[key].trim()
@@ -203,6 +206,11 @@ export default function SettingsPage() {
       : form.google_user_email && form.google_credentials_configured
         ? '待授权'
         : '待完善配置'
+  const gitStatus = !form.git_activity_enabled
+    ? '已关闭'
+    : form.git_repo_paths?.trim()
+      ? '已启用'
+      : '待填写仓库'
 
   return (
     <div>
@@ -417,6 +425,46 @@ export default function SettingsPage() {
             >
               <div className="rounded-lg bg-sky-50/60 px-3 py-2 text-xs text-sky-700">
                 Safari 更依赖系统权限；如果被拒绝，需要为终端或 Python 解释器授予“完全磁盘访问权限”。
+              </div>
+            </SourceCard>
+
+            <SourceCard
+              icon={<GitBranch className="w-4 h-4 text-slate-700" />}
+              title="Git 记录"
+              description="读取本地 Git 仓库最近 2 天的提交记录。"
+              status={gitStatus}
+              statusTone={
+                !form.git_activity_enabled
+                  ? 'bg-gray-100 text-gray-500'
+                  : form.git_repo_paths?.trim()
+                    ? 'bg-slate-100 text-slate-700'
+                    : 'bg-amber-100 text-amber-700'
+              }
+              enabled={!!form.git_activity_enabled}
+              onToggle={checked => setForm({ ...form, git_activity_enabled: checked })}
+            >
+              <div className="space-y-3">
+                <div>
+                  <label className="block text-xs font-medium text-gray-500 mb-1">仓库路径</label>
+                  <textarea
+                    value={form.git_repo_paths ?? ''}
+                    onChange={e => setForm({ ...form, git_repo_paths: e.target.value })}
+                    placeholder={'/Users/you/project-a\n/Users/you/project-b'}
+                    rows={4}
+                    className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm outline-none focus:ring-1 focus:ring-blue-500 resize-none font-mono"
+                  />
+                  <p className="text-xs text-gray-400 mt-1">一行一个本地 Git 仓库路径；最多采集前 20 个仓库。</p>
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-gray-500 mb-1">作者过滤</label>
+                  <input
+                    value={form.git_author_filter ?? ''}
+                    onChange={e => setForm({ ...form, git_author_filter: e.target.value })}
+                    placeholder="name@example.com 或 Dejun Shi"
+                    className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm outline-none focus:ring-1 focus:ring-blue-500"
+                  />
+                  <p className="text-xs text-gray-400 mt-1">留空会采集仓库中所有作者的提交。</p>
+                </div>
               </div>
             </SourceCard>
 

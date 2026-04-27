@@ -9,6 +9,7 @@ from app.services import ingest_service
 from app.services.browser_collector import collect_browser_history
 from app.services.chrome_collector import collect_chrome_history
 from app.services.gcal_collector import collect_gcal_events, has_google_authorized_token, has_google_client_credentials
+from app.services.git_collector import collect_git_activity, parse_git_repo_paths
 from app.services.safari_collector import collect_safari_history
 
 router = APIRouter(prefix="/api", tags=["ingest"])
@@ -32,6 +33,10 @@ class BrowserLocalRequest(BaseModel):
 class GCalRequest(BaseModel):
     days: int = 2
     user_email: Optional[str] = None
+
+
+class GitRequest(BaseModel):
+    days: int = 2
 
 
 class ConfiguredSourcesRequest(BaseModel):
@@ -166,6 +171,57 @@ async def ingest_gcal(req: GCalRequest, db: AsyncSession = Depends(get_db)):
     return await _ingest_gcal_impl(req, db)
 
 
+async def _ingest_git_impl(req: GitRequest, db: AsyncSession, settings: dict | None = None) -> dict:
+    if settings is None:
+        from app.routers.settings import _get_all_settings
+
+        settings = await _get_all_settings(db)
+
+    repo_paths = parse_git_repo_paths(settings.get("git_repo_paths", ""))
+    if not repo_paths:
+        raise HTTPException(status_code=400, detail="请先在配置页填写 Git 仓库路径")
+
+    try:
+        collected = collect_git_activity(
+            repo_paths,
+            req.days,
+            author_filter=settings.get("git_author_filter", ""),
+        )
+    except FileNotFoundError as e:
+        raise HTTPException(status_code=500, detail=str(e))
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Git 记录采集失败: {e}")
+
+    repositories = collected.get("repositories", [])
+    if not collected["events"] and repositories and all(item.get("status") != "success" for item in repositories):
+        detail = "；".join(collected.get("warnings", [])) or "未读取到有效 Git 仓库"
+        raise HTTPException(status_code=400, detail=detail)
+
+    if not collected["events"]:
+        return {
+            "imported_count": 0,
+            "skipped_count": 0,
+            "date_range": collected.get("date_range", []),
+            "warnings": collected.get("warnings", []),
+            "repositories": repositories,
+        }
+
+    result = await ingest_service.ingest_git(db, collected["events"])
+    return {
+        **result,
+        "date_range": result.get("date_range") or collected.get("date_range", []),
+        "warnings": collected.get("warnings", []),
+        "repositories": repositories,
+    }
+
+
+@router.post("/ingest/git")
+async def ingest_git(req: GitRequest, db: AsyncSession = Depends(get_db)):
+    return await _ingest_git_impl(req, db)
+
+
 @router.post("/ingest/collect")
 async def ingest_configured_sources(req: ConfiguredSourcesRequest, db: AsyncSession = Depends(get_db)):
     from app.routers.settings import _get_all_settings
@@ -174,8 +230,9 @@ async def ingest_configured_sources(req: ConfiguredSourcesRequest, db: AsyncSess
     chrome_enabled = settings.get("chrome_history_enabled", settings.get("browser_history_enabled", True))
     safari_enabled = settings.get("safari_history_enabled", settings.get("browser_history_enabled", True))
     gcal_enabled = settings.get("google_calendar_enabled", False)
+    git_enabled = settings.get("git_activity_enabled", False)
 
-    if not chrome_enabled and not safari_enabled and not gcal_enabled:
+    if not chrome_enabled and not safari_enabled and not gcal_enabled and not git_enabled:
         raise HTTPException(status_code=400, detail="请先在配置页启用至少一个数据源")
 
     source_results = []
@@ -235,6 +292,71 @@ async def ingest_configured_sources(req: ConfiguredSourcesRequest, db: AsyncSess
                 "collected_sources": [],
                 "source_breakdown": {},
             })
+
+    if git_enabled:
+        git_repo_paths = parse_git_repo_paths(settings.get("git_repo_paths", ""))
+        if not git_repo_paths:
+            message = "请先在配置页填写 Git 仓库路径"
+            warnings.append(f"Git 记录：{message}")
+            source_results.append({
+                "source": "git",
+                "label": "Git 记录",
+                "status": "misconfigured",
+                "imported_count": 0,
+                "skipped_count": 0,
+                "date_range": [],
+                "message": message,
+                "warnings": [message],
+                "collected_sources": [],
+                "source_breakdown": {},
+            })
+        else:
+            try:
+                git_result = await _ingest_git_impl(GitRequest(days=req.days), db, settings=settings)
+                imported_count += git_result.get("imported_count", 0)
+                skipped_count += git_result.get("skipped_count", 0)
+                date_ranges.append(git_result.get("date_range", []))
+                warnings.extend(git_result.get("warnings", []))
+                source_results.append({
+                    "source": "git",
+                    "label": "Git 记录",
+                    "status": "success",
+                    "imported_count": git_result.get("imported_count", 0),
+                    "skipped_count": git_result.get("skipped_count", 0),
+                    "date_range": git_result.get("date_range", []),
+                    "message": f"最近 {req.days} 天无新的 Git 提交" if git_result.get("imported_count", 0) == 0 else None,
+                    "warnings": git_result.get("warnings", []),
+                    "collected_sources": ["git"],
+                    "source_breakdown": {"git": git_result.get("imported_count", 0)},
+                })
+            except HTTPException as exc:
+                detail = str(exc.detail)
+                warnings.append(f"Git 记录：{detail}")
+                source_results.append({
+                    "source": "git",
+                    "label": "Git 记录",
+                    "status": "failed",
+                    "imported_count": 0,
+                    "skipped_count": 0,
+                    "date_range": [],
+                    "message": detail,
+                    "warnings": [detail],
+                    "collected_sources": [],
+                    "source_breakdown": {},
+                })
+    else:
+        source_results.append({
+            "source": "git",
+            "label": "Git 记录",
+            "status": "disabled",
+            "imported_count": 0,
+            "skipped_count": 0,
+            "date_range": [],
+            "message": "已在配置页关闭",
+            "warnings": [],
+            "collected_sources": [],
+            "source_breakdown": {},
+        })
 
     if gcal_enabled:
         user_email = settings.get("google_user_email", "")

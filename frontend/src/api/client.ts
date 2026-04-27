@@ -20,6 +20,9 @@ export const ingestChrome = (file: File) => {
 export const ingestGCal = (days = 2) =>
   api.post<IngestResponse>('/ingest/gcal', { days }).then(r => r.data)
 
+export const ingestGit = (days = 2) =>
+  api.post<IngestResponse>('/ingest/git', { days }).then(r => r.data)
+
 export const collectConfiguredSources = (days = 2) =>
   api.post<CollectSourcesResponse>('/ingest/collect', { days }).then(r => r.data)
 

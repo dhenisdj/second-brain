@@ -37,6 +37,9 @@ SETTING_KEYS = [
     "chrome_history_enabled",
     "safari_history_enabled",
     "google_calendar_enabled",
+    "git_activity_enabled",
+    "git_repo_paths",
+    "git_author_filter",
 ]
 
 DEFAULT_SETTINGS = {
@@ -55,6 +58,9 @@ DEFAULT_SETTINGS = {
     "chrome_history_enabled": True,
     "safari_history_enabled": True,
     "google_calendar_enabled": False,
+    "git_activity_enabled": False,
+    "git_repo_paths": "",
+    "git_author_filter": "",
 }
 
 SECRET_SETTING_KEYS = (
@@ -80,6 +86,9 @@ class SettingsUpdate(BaseModel):
     chrome_history_enabled: Optional[bool] = None
     safari_history_enabled: Optional[bool] = None
     google_calendar_enabled: Optional[bool] = None
+    git_activity_enabled: Optional[bool] = None
+    git_repo_paths: Optional[str] = None
+    git_author_filter: Optional[str] = None
     browser_history_enabled: Optional[bool] = None
     clear_openai_api_key: Optional[bool] = None
     clear_deepseek_api_key: Optional[bool] = None

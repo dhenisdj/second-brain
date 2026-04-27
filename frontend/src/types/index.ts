@@ -1,6 +1,6 @@
 export interface ActivityEvent {
   id: string
-  source: 'browser' | 'chrome' | 'safari' | 'manual' | 'gcal'
+  source: 'browser' | 'chrome' | 'safari' | 'manual' | 'gcal' | 'git'
   timestamp: string
   title: string
   content?: string
@@ -31,7 +31,7 @@ export interface IngestResponse {
 export type CollectSourceStatus = 'success' | 'disabled' | 'misconfigured' | 'failed'
 
 export interface CollectSourceResult {
-  source: 'chrome' | 'safari' | 'gcal'
+  source: 'chrome' | 'safari' | 'gcal' | 'git'
   label: string
   status: CollectSourceStatus
   imported_count: number
@@ -152,6 +152,9 @@ export interface AppSettings {
   chrome_history_enabled: boolean
   safari_history_enabled: boolean
   google_calendar_enabled: boolean
+  git_activity_enabled: boolean
+  git_repo_paths: string
+  git_author_filter: string
   google_credentials_configured: boolean
   google_calendar_authorized: boolean
   openai_api_key_configured: boolean
@@ -178,6 +181,9 @@ export interface SettingsUpdatePayload {
   chrome_history_enabled?: boolean
   safari_history_enabled?: boolean
   google_calendar_enabled?: boolean
+  git_activity_enabled?: boolean
+  git_repo_paths?: string
+  git_author_filter?: string
 }
 
 export interface ManualEntry {
