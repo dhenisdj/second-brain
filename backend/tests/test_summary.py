@@ -175,3 +175,50 @@ class TestSummaryGenerate:
         assert "浏览 github.com" in prompt
         assert "旧意图" not in prompt
         assert "新意图" in prompt
+
+    @patch("app.services.summary_service.extract_and_merge_graph", new_callable=AsyncMock)
+    @patch("app.services.llm_service.LLMService.complete_json", new_callable=AsyncMock)
+    async def test_generate_summary_builds_bounded_digest_for_many_messages(
+        self,
+        mock_llm,
+        _mock_graph,
+        db_session,
+    ):
+        events = []
+        analyses = []
+        for i in range(80):
+            event = Event(
+                source="gmail",
+                timestamp=datetime.fromisoformat(f"2026-04-03T10:{i % 60:02d}:00"),
+                title=f"Project Alpha 邮件 {i}",
+                content=f"email-body-marker-{i} " + ("详细邮件正文 " * 80),
+            )
+            events.append(event)
+
+        db_session.add_all(events)
+        await db_session.flush()
+
+        for event in events:
+            analyses.append(
+                Analysis(
+                    event_id=event.id,
+                    category="work",
+                    intent="Project Alpha 沟通",
+                    tags='["Project Alpha", "Gmail"]',
+                    confidence=0.9,
+                    created_at=datetime.fromisoformat("2026-04-03T10:30:00"),
+                )
+            )
+        db_session.add_all(analyses)
+        await db_session.commit()
+
+        mock_llm.return_value = LLM_SUMMARY_RESPONSE
+
+        await summary_service.generate_summary(db_session, "2026-04-03")
+
+        prompt = mock_llm.await_args.args[0]
+        assert '"raw_event_count": 80' in prompt
+        assert '"main_topics"' in prompt
+        assert "email-body-marker-0" in prompt
+        assert "email-body-marker-40" not in prompt
+        assert len(prompt) < 20000
