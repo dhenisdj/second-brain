@@ -8,14 +8,21 @@ import KnowledgePage from './pages/KnowledgePage'
 import PlanPage from './pages/PlanPage'
 import DataManagePage from './pages/DataManagePage'
 import SettingsPage from './pages/SettingsPage'
+import { useSettings } from './hooks/queries'
 
 const queryClient = new QueryClient({
   defaultOptions: { queries: { refetchOnWindowFocus: false, retry: 1 } },
 })
 
+function SettingsPreflight() {
+  useSettings()
+  return null
+}
+
 export default function App() {
   return (
     <QueryClientProvider client={queryClient}>
+      <SettingsPreflight />
       <BrowserRouter>
         <Routes>
           <Route element={<Layout />}>

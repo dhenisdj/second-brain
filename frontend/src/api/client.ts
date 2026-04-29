@@ -125,8 +125,10 @@ export const deleteEvent = (eventId: string) =>
 export const deleteDay = (date: string) =>
   api.delete<{ deleted: Record<string, number> }>(`/data/day/${date}`).then(r => r.data)
 
-export const getSettings = () =>
-  api.get<AppSettings>('/settings').then(r => r.data)
+export const getSettings = (options: { refreshGoogleStatus?: boolean } = {}) =>
+  api.get<AppSettings>('/settings', {
+    params: { refresh_google_status: options.refreshGoogleStatus || undefined },
+  }).then(r => r.data)
 
 export const updateSettings = (settings: SettingsUpdatePayload) =>
   api.put<AppSettings>('/settings', settings).then(r => r.data)

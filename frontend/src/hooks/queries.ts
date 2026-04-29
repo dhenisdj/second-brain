@@ -54,7 +54,10 @@ export const useDataOverview = (start: string, end: string) =>
   useQuery({ queryKey: ['overview', start, end], queryFn: () => api.getDataOverview(start, end), enabled: !!start && !!end })
 
 export const useSettings = () =>
-  useQuery({ queryKey: ['settings'], queryFn: api.getSettings })
+  useQuery({
+    queryKey: ['settings'],
+    queryFn: () => api.getSettings({ refreshGoogleStatus: true }),
+  })
 
 export const useIngestBrowserLocal = () => {
   const qc = useQueryClient()

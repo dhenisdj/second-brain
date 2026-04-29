@@ -166,6 +166,50 @@ def has_google_gmail_authorized_token() -> bool:
     return has_google_authorized_token(GMAIL_SCOPES)
 
 
+def check_google_calendar_api_enabled() -> bool | None:
+    try:
+        service = _build_service(
+            required_scopes=CALENDAR_SCOPES,
+            missing_scope_message="Google Calendar 尚未完成授权，请先在配置页点击“授权 Google 数据源”",
+        )
+        execute_google_request(
+            service.calendarList().list(maxResults=1),
+            CALENDAR_API_SLUG,
+            "Google Calendar API",
+        )
+        return True
+    except GoogleApiNotEnabledError:
+        return False
+    except (FileNotFoundError, PermissionError):
+        return None
+    except Exception:
+        logger.info("Google Calendar API readiness check failed", exc_info=True)
+        return None
+
+
+def check_google_gmail_api_enabled() -> bool | None:
+    try:
+        service = _build_service(
+            service_name="gmail",
+            version="v1",
+            required_scopes=GMAIL_SCOPES,
+            missing_scope_message="Gmail 尚未完成读取授权，请在配置页重新授权 Google 数据源",
+        )
+        execute_google_request(
+            service.users().getProfile(userId="me"),
+            GMAIL_API_SLUG,
+            "Gmail API",
+        )
+        return True
+    except GoogleApiNotEnabledError:
+        return False
+    except (FileNotFoundError, PermissionError):
+        return None
+    except Exception:
+        logger.info("Gmail API readiness check failed", exc_info=True)
+        return None
+
+
 def save_google_client_credentials(content: bytes) -> dict:
     try:
         payload = json.loads(content.decode("utf-8"))

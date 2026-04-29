@@ -171,6 +171,8 @@ export interface AppSettings {
   google_credentials_configured: boolean
   google_calendar_authorized: boolean
   google_gmail_authorized: boolean
+  google_calendar_api_enabled?: boolean | null
+  google_gmail_api_enabled?: boolean | null
   google_cloud_project_id?: string
   google_calendar_api_enable_url?: string
   google_gmail_api_enable_url?: string

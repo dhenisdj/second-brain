@@ -12,6 +12,8 @@ from app.services.gcal_collector import (
     GMAIL_API_SLUG,
     build_google_api_enable_url,
     build_google_authorization_url,
+    check_google_calendar_api_enabled,
+    check_google_gmail_api_enabled,
     complete_google_authorization,
     get_google_client_project_id,
     has_google_calendar_authorized_token,
@@ -144,14 +146,26 @@ async def _get_all_settings(db: AsyncSession) -> dict:
     return merged
 
 
-def _build_public_settings(all_settings: dict) -> dict:
+def _build_public_settings(all_settings: dict, refresh_google_status: bool = False) -> dict:
     public_settings = dict(all_settings)
     for key in SECRET_SETTING_KEYS:
         public_settings[f"{key}_configured"] = bool(all_settings.get(key))
         public_settings[key] = ""
     public_settings["google_credentials_configured"] = has_google_client_credentials()
-    public_settings["google_calendar_authorized"] = has_google_calendar_authorized_token()
-    public_settings["google_gmail_authorized"] = has_google_gmail_authorized_token()
+    google_calendar_authorized = has_google_calendar_authorized_token()
+    google_gmail_authorized = has_google_gmail_authorized_token()
+    public_settings["google_calendar_authorized"] = google_calendar_authorized
+    public_settings["google_gmail_authorized"] = google_gmail_authorized
+    public_settings["google_calendar_api_enabled"] = (
+        check_google_calendar_api_enabled()
+        if refresh_google_status and google_calendar_authorized
+        else None
+    )
+    public_settings["google_gmail_api_enabled"] = (
+        check_google_gmail_api_enabled()
+        if refresh_google_status and google_gmail_authorized
+        else None
+    )
     public_settings["google_cloud_project_id"] = get_google_client_project_id()
     public_settings["google_calendar_api_enable_url"] = build_google_api_enable_url(CALENDAR_API_SLUG)
     public_settings["google_gmail_api_enable_url"] = build_google_api_enable_url(GMAIL_API_SLUG)
@@ -166,8 +180,8 @@ def _build_google_redirect_uri(request: Request) -> str:
 
 
 @router.get("/settings")
-async def get_settings(db: AsyncSession = Depends(get_db)):
-    return _build_public_settings(await _get_all_settings(db))
+async def get_settings(refresh_google_status: bool = False, db: AsyncSession = Depends(get_db)):
+    return _build_public_settings(await _get_all_settings(db), refresh_google_status=refresh_google_status)
 
 
 @router.post("/settings/google-credentials")

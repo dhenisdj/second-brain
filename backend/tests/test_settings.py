@@ -33,6 +33,8 @@ class TestSettings:
         assert "google_credentials_configured" in data
         assert "google_calendar_authorized" in data
         assert "google_gmail_authorized" in data
+        assert "google_calendar_api_enabled" in data
+        assert "google_gmail_api_enabled" in data
 
     async def test_update_llm_provider_to_ollama(self, client):
         resp = await client.put("/api/settings", json={
@@ -227,6 +229,21 @@ class TestSettings:
 
         assert resp.status_code == 400
         assert "installed" in resp.json()["detail"]
+
+    async def test_get_settings_can_refresh_google_api_status(self, client, monkeypatch):
+        monkeypatch.setattr("app.routers.settings.has_google_calendar_authorized_token", lambda: True)
+        monkeypatch.setattr("app.routers.settings.has_google_gmail_authorized_token", lambda: True)
+        monkeypatch.setattr("app.routers.settings.check_google_calendar_api_enabled", lambda: True)
+        monkeypatch.setattr("app.routers.settings.check_google_gmail_api_enabled", lambda: False)
+
+        resp = await client.get("/api/settings?refresh_google_status=true")
+
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["google_calendar_authorized"] is True
+        assert data["google_gmail_authorized"] is True
+        assert data["google_calendar_api_enabled"] is True
+        assert data["google_gmail_api_enabled"] is False
 
     async def test_start_google_calendar_authorization_returns_url(self, client, tmp_path, monkeypatch):
         cred_dir = tmp_path / "credentials"

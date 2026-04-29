@@ -215,16 +215,33 @@ export default function SettingsPage() {
     form.google_user_email !== settings.google_user_email
   )
   const googleConfigDirty = calendarConfigDirty || gmailConfigDirty
+  const googleCredentialsConfigured = !!form.google_credentials_configured
+  const calendarEnabled = !!form.google_calendar_enabled
+  const gmailEnabled = !!form.gmail_enabled
+  const calendarAuthorized = !!form.google_calendar_authorized
+  const gmailAuthorized = !!form.google_gmail_authorized
+  const calendarApiReady = form.google_calendar_api_enabled === true
+  const gmailApiReady = form.google_gmail_api_enabled === true
+  const calendarAuthNeeded = calendarEnabled && !calendarAuthorized
+  const gmailAuthNeeded = gmailEnabled && !gmailAuthorized
+  const googleAuthNeeded = googleCredentialsConfigured && (calendarAuthNeeded || gmailAuthNeeded)
+  const calendarApiCheckNeeded = googleCredentialsConfigured && calendarEnabled && calendarAuthorized && !calendarApiReady
+  const gmailApiCheckNeeded = googleCredentialsConfigured && gmailEnabled && gmailAuthorized && !gmailApiReady
+  const googleApiCheckNeeded = calendarApiCheckNeeded || gmailApiCheckNeeded
+  const calendarReady = !!form.google_user_email && googleCredentialsConfigured && calendarAuthorized && calendarApiReady
+  const gmailReady = !!form.google_user_email && googleCredentialsConfigured && gmailAuthorized && gmailApiReady
 
   const googleStatus = calendarConfigDirty
     ? '待保存'
-    : !form.google_calendar_enabled
+    : !calendarEnabled
     ? '已关闭'
-    : form.google_user_email && form.google_credentials_configured && form.google_calendar_authorized
+    : calendarReady
       ? '已启用'
-      : form.google_user_email && form.google_credentials_configured
-        ? '待授权'
-        : '待完善配置'
+      : form.google_user_email && googleCredentialsConfigured && calendarAuthorized
+        ? form.google_calendar_api_enabled === false ? '待启用 API' : '待检查 API'
+        : form.google_user_email && googleCredentialsConfigured
+          ? '待授权'
+          : '待完善配置'
   const gitStatus = gitConfigDirty
     ? '待保存'
     : !form.git_activity_enabled
@@ -234,25 +251,26 @@ export default function SettingsPage() {
       : '待填写仓库'
   const gmailStatus = gmailConfigDirty
     ? '待保存'
-    : !form.gmail_enabled
+    : !gmailEnabled
     ? '已关闭'
-    : form.google_user_email && form.google_credentials_configured && form.google_gmail_authorized
+    : gmailReady
       ? '已启用'
-      : form.google_user_email && form.google_credentials_configured
-        ? '待授权'
-        : '待完善配置'
-  const googleAuthComplete = !!form.google_calendar_authorized && !!form.google_gmail_authorized
+      : form.google_user_email && googleCredentialsConfigured && gmailAuthorized
+        ? form.google_gmail_api_enabled === false ? '待启用 API' : '待检查 API'
+        : form.google_user_email && googleCredentialsConfigured
+          ? '待授权'
+          : '待完善配置'
   const browserEnabledCount = [form.chrome_history_enabled, form.safari_history_enabled].filter(Boolean).length
-  const googleEnabledCount = [form.google_calendar_enabled, form.gmail_enabled].filter(Boolean).length
-  const googleAuthStatusText = googleAuthComplete
-    ? '已保存日历与 Gmail 授权 token'
-    : form.google_calendar_authorized
-      ? '已保存日历授权；Gmail 只读未授权'
-      : '未完成账号授权'
-  const googleAuthButtonText = googleAuthComplete
-    ? '重新授权'
-    : form.google_calendar_authorized
-      ? '重新授权补全 Gmail'
+  const googleEnabledCount = [calendarEnabled, gmailEnabled].filter(Boolean).length
+  const googleAuthStatusText = calendarAuthNeeded && gmailAuthNeeded
+    ? '日历与 Gmail 均未完成账号授权'
+    : gmailAuthNeeded
+      ? 'Gmail 只读未授权'
+      : 'Google 日历未完成账号授权'
+  const googleAuthButtonText = gmailAuthNeeded && calendarAuthorized
+    ? '补全 Gmail 授权'
+    : calendarAuthNeeded && gmailAuthorized
+      ? '补全日历授权'
       : '授权 Google 数据源'
 
   return (
@@ -545,24 +563,26 @@ export default function SettingsPage() {
                 </label>
               </div>
 
-              <div className="rounded-lg border border-gray-200 bg-gray-50 p-3">
-                <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                  <div>
-                    <p className="text-xs font-medium text-gray-600">Google 数据源授权</p>
-                    <p className="text-xs text-gray-400 mt-1">{googleAuthStatusText}</p>
+              {googleAuthNeeded && (
+                <div className="rounded-lg border border-gray-200 bg-gray-50 p-3">
+                  <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                    <div>
+                      <p className="text-xs font-medium text-gray-600">Google 数据源授权</p>
+                      <p className="text-xs text-gray-400 mt-1">{googleAuthStatusText}</p>
+                    </div>
+                    <button
+                      onClick={handleGoogleAuthorize}
+                      disabled={startGoogleAuthMut.isPending}
+                      className="inline-flex items-center justify-center gap-1.5 rounded-lg border border-gray-200 bg-white px-3 py-2 text-xs font-medium text-gray-700 hover:border-gray-300 disabled:opacity-50"
+                    >
+                      {startGoogleAuthMut.isPending ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <ExternalLink className="w-3.5 h-3.5" />}
+                      {googleAuthButtonText}
+                    </button>
                   </div>
-                  <button
-                    onClick={handleGoogleAuthorize}
-                    disabled={!form.google_credentials_configured || startGoogleAuthMut.isPending}
-                    className="inline-flex items-center justify-center gap-1.5 rounded-lg border border-gray-200 bg-white px-3 py-2 text-xs font-medium text-gray-700 hover:border-gray-300 disabled:opacity-50"
-                  >
-                    {startGoogleAuthMut.isPending ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <ExternalLink className="w-3.5 h-3.5" />}
-                    {googleAuthButtonText}
-                  </button>
                 </div>
-              </div>
+              )}
 
-              {form.google_credentials_configured && (
+              {googleApiCheckNeeded && (
                 <div className="rounded-lg border border-amber-200 bg-amber-50 p-3">
                   <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                     <div>
@@ -575,24 +595,24 @@ export default function SettingsPage() {
                       )}
                     </div>
                     <div className="flex flex-col gap-2 sm:flex-row">
-                      {form.google_calendar_api_enable_url && (
+                      {calendarApiCheckNeeded && form.google_calendar_api_enable_url && (
                         <button
                           type="button"
                           onClick={() => openExternalUrl(form.google_calendar_api_enable_url!)}
                           className="inline-flex items-center justify-center gap-1.5 whitespace-nowrap rounded-lg border border-amber-200 bg-white px-3 py-2 text-xs font-medium text-amber-800 hover:border-amber-300"
                         >
                           <ExternalLink className="w-3.5 h-3.5" />
-                          检查日历 API
+                          {form.google_calendar_api_enabled === false ? '开启日历 API' : '检查日历 API'}
                         </button>
                       )}
-                      {form.google_gmail_api_enable_url && (
+                      {gmailApiCheckNeeded && form.google_gmail_api_enable_url && (
                         <button
                           type="button"
                           onClick={() => openExternalUrl(form.google_gmail_api_enable_url!)}
                           className="inline-flex items-center justify-center gap-1.5 whitespace-nowrap rounded-lg border border-amber-200 bg-white px-3 py-2 text-xs font-medium text-amber-800 hover:border-amber-300"
                         >
                           <ExternalLink className="w-3.5 h-3.5" />
-                          检查 Gmail API
+                          {form.google_gmail_api_enabled === false ? '开启 Gmail API' : '检查 Gmail API'}
                         </button>
                       )}
                     </div>
@@ -600,28 +620,9 @@ export default function SettingsPage() {
                 </div>
               )}
 
-              {!form.google_credentials_configured && (
+              {googleEnabledCount > 0 && !googleCredentialsConfigured && (
                 <div className="rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-xs text-gray-500">
                   上传 OAuth JSON 后会显示 Google Calendar API 和 Gmail API 的检查入口。
-                </div>
-              )}
-
-              {form.gmail_enabled && form.google_credentials_configured && !form.google_gmail_authorized && (
-                <div className="rounded-lg border border-amber-200 bg-amber-50 p-3">
-                  <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                    <p className="text-xs text-amber-700">
-                      Gmail 已启用但当前 token 尚未包含 Gmail 只读权限，请先补全 Google 数据源授权。
-                    </p>
-                    <button
-                      type="button"
-                      onClick={handleGoogleAuthorize}
-                      disabled={startGoogleAuthMut.isPending}
-                      className="inline-flex items-center justify-center gap-1.5 whitespace-nowrap rounded-lg border border-amber-200 bg-white px-3 py-2 text-xs font-medium text-amber-800 hover:border-amber-300 disabled:opacity-50"
-                    >
-                      {startGoogleAuthMut.isPending ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <ExternalLink className="w-3.5 h-3.5" />}
-                      补全 Gmail 授权
-                    </button>
-                  </div>
                 </div>
               )}
 
@@ -634,13 +635,13 @@ export default function SettingsPage() {
                   statusTone={
                     calendarConfigDirty
                       ? 'bg-amber-100 text-amber-700'
-                      : !form.google_calendar_enabled
+                      : !calendarEnabled
                         ? 'bg-gray-100 text-gray-500'
-                        : form.google_user_email && form.google_credentials_configured && form.google_calendar_authorized
+                        : calendarReady
                           ? 'bg-orange-100 text-orange-700'
                           : 'bg-amber-100 text-amber-700'
                   }
-                  enabled={!!form.google_calendar_enabled}
+                  enabled={calendarEnabled}
                   onToggle={checked => setForm({ ...form, google_calendar_enabled: checked })}
                 />
                 <SourceToggleRow
@@ -651,13 +652,13 @@ export default function SettingsPage() {
                   statusTone={
                     gmailConfigDirty
                       ? 'bg-amber-100 text-amber-700'
-                      : !form.gmail_enabled
+                      : !gmailEnabled
                         ? 'bg-gray-100 text-gray-500'
-                        : form.google_user_email && form.google_credentials_configured && form.google_gmail_authorized
+                        : gmailReady
                           ? 'bg-rose-100 text-rose-700'
                           : 'bg-amber-100 text-amber-700'
                   }
-                  enabled={!!form.gmail_enabled}
+                  enabled={gmailEnabled}
                   onToggle={checked => setForm({ ...form, gmail_enabled: checked })}
                 />
               </div>
