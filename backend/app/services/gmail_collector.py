@@ -4,7 +4,7 @@ from datetime import datetime, timedelta, timezone
 from email.utils import parsedate_to_datetime
 from urllib.parse import quote
 
-from app.services.gcal_collector import GMAIL_SCOPES, _build_service, _html_to_text
+from app.services.gcal_collector import GMAIL_API_SLUG, GMAIL_SCOPES, _build_service, _html_to_text, execute_google_request
 
 logger = logging.getLogger(__name__)
 
@@ -152,12 +152,16 @@ def collect_gmail_messages(user_email: str, days: int = 2, max_messages: int = D
 
     while len(collected) < max_messages:
         page_size = min(100, max_messages - len(collected))
-        result = service.users().messages().list(
-            userId="me",
-            q=query,
-            maxResults=page_size,
-            pageToken=page_token,
-        ).execute()
+        result = execute_google_request(
+            service.users().messages().list(
+                userId="me",
+                q=query,
+                maxResults=page_size,
+                pageToken=page_token,
+            ),
+            GMAIL_API_SLUG,
+            "Gmail API",
+        )
 
         message_refs = result.get("messages", [])
         if not message_refs:
@@ -166,11 +170,15 @@ def collect_gmail_messages(user_email: str, days: int = 2, max_messages: int = D
         for ref in message_refs:
             if len(collected) >= max_messages:
                 break
-            message = service.users().messages().get(
-                userId="me",
-                id=ref["id"],
-                format="full",
-            ).execute()
+            message = execute_google_request(
+                service.users().messages().get(
+                    userId="me",
+                    id=ref["id"],
+                    format="full",
+                ),
+                GMAIL_API_SLUG,
+                "Gmail API",
+            )
             headers = _headers_to_dict((message.get("payload") or {}).get("headers"))
             timestamp = _parse_message_time(headers, message.get("internalDate"))
             subject = headers.get("subject") or "（无主题）"

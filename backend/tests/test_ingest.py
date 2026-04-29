@@ -8,6 +8,7 @@ from conftest import SAMPLE_MANUAL_ENTRIES, SAMPLE_CHROME_HISTORY
 from app.models.event import Event
 from app.models.analysis import Analysis
 from app.services.chrome_devtools_collector import ChromeDevtoolsUnavailable
+from app.services.gcal_collector import GoogleApiNotEnabledError
 from app.services.ingest_service import get_events_by_date
 
 
@@ -610,6 +611,61 @@ class TestGCalIngest:
         gmail_result = next(item for item in data["source_results"] if item["source"] == "gmail")
         assert gmail_result["status"] == "misconfigured"
         assert "授权" in gmail_result["message"]
+
+    async def test_gmail_api_disabled_returns_actionable_detail(self, client, monkeypatch):
+        async def fake_get_all_settings(_db):
+            return {"google_user_email": "tester@example.com"}
+
+        def fake_collect_gmail_messages(_user_email, _days, _max_messages):
+            raise GoogleApiNotEnabledError(
+                api_slug="gmail.googleapis.com",
+                api_label="Gmail API",
+                project_id="208574075633",
+            )
+
+        monkeypatch.setattr("app.routers.settings._get_all_settings", fake_get_all_settings)
+        monkeypatch.setattr("app.routers.ingest.collect_gmail_messages", fake_collect_gmail_messages)
+
+        resp = await client.post("/api/ingest/gmail", json={})
+
+        assert resp.status_code == 400
+        detail = resp.json()["detail"]
+        assert detail["code"] == "google_api_disabled"
+        assert detail["action_label"] == "开启 Gmail API"
+        assert "gmail.googleapis.com" in detail["action_url"]
+        assert "project=208574075633" in detail["action_url"]
+
+    async def test_collect_configured_sources_marks_gmail_api_disabled_as_actionable(self, client, monkeypatch):
+        async def fake_get_all_settings(_db):
+            return {
+                "chrome_history_enabled": False,
+                "safari_history_enabled": False,
+                "google_calendar_enabled": False,
+                "gmail_enabled": True,
+                "git_activity_enabled": False,
+                "google_user_email": "tester@example.com",
+            }
+
+        def fake_collect_gmail_messages(_user_email, _days, _max_messages):
+            raise GoogleApiNotEnabledError(
+                api_slug="gmail.googleapis.com",
+                api_label="Gmail API",
+                project_id="208574075633",
+            )
+
+        monkeypatch.setattr("app.routers.settings._get_all_settings", fake_get_all_settings)
+        monkeypatch.setattr("app.routers.ingest.has_google_client_credentials", lambda: True)
+        monkeypatch.setattr("app.routers.ingest.has_google_gmail_authorized_token", lambda: True)
+        monkeypatch.setattr("app.routers.ingest.collect_gmail_messages", fake_collect_gmail_messages)
+
+        resp = await client.post("/api/ingest/collect", json={})
+
+        assert resp.status_code == 200
+        gmail_result = next(item for item in resp.json()["source_results"] if item["source"] == "gmail")
+        assert gmail_result["status"] == "misconfigured"
+        assert gmail_result["code"] == "google_api_disabled"
+        assert gmail_result["action_label"] == "开启 Gmail API"
+        assert "project=208574075633" in gmail_result["action_url"]
 
 
 class TestEventQuery:

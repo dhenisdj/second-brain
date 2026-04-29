@@ -19,6 +19,7 @@ from app.services.chrome_devtools_collector import (
     collect_chrome_rendered_tabs,
 )
 from app.services.gcal_collector import (
+    GoogleApiNotEnabledError,
     collect_gcal_events,
     has_google_calendar_authorized_token,
     has_google_client_credentials,
@@ -269,6 +270,8 @@ async def _ingest_gcal_impl(req: GCalRequest, db: AsyncSession) -> dict:
         raise HTTPException(status_code=404, detail=str(e))
     except PermissionError as e:
         raise HTTPException(status_code=400, detail=str(e))
+    except GoogleApiNotEnabledError as e:
+        raise HTTPException(status_code=400, detail=e.to_detail())
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Google Calendar 采集失败: {e}")
 
@@ -296,6 +299,8 @@ async def _ingest_gmail_impl(req: GmailRequest, db: AsyncSession) -> dict:
         raise HTTPException(status_code=404, detail=str(e))
     except PermissionError as e:
         raise HTTPException(status_code=400, detail=str(e))
+    except GoogleApiNotEnabledError as e:
+        raise HTTPException(status_code=400, detail=e.to_detail())
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Gmail 采集失败: {e}")
 
@@ -314,6 +319,30 @@ def _merge_date_ranges(ranges: list[list[str]]) -> list[str]:
     if not dates:
         return []
     return [dates[0], dates[-1]]
+
+
+def _normalize_http_detail(detail) -> dict:
+    if isinstance(detail, dict):
+        message = detail.get("message") or str(detail)
+        return {
+            "message": message,
+            "code": detail.get("code"),
+            "action_label": detail.get("action_label"),
+            "action_url": detail.get("action_url"),
+            "project_id": detail.get("project_id"),
+        }
+    return {"message": str(detail)}
+
+
+def _source_result_error_from_exception(exc: HTTPException) -> tuple[str, str, dict]:
+    detail = _normalize_http_detail(exc.detail)
+    status = "misconfigured" if exc.status_code < 500 or detail.get("code") == "google_api_disabled" else "failed"
+    extras = {
+        key: detail[key]
+        for key in ("code", "action_label", "action_url", "project_id")
+        if detail.get(key)
+    }
+    return detail["message"], status, extras
 
 
 @router.post("/ingest/gcal")
@@ -575,12 +604,12 @@ async def ingest_configured_sources(req: ConfiguredSourcesRequest, db: AsyncSess
                     "source_breakdown": {},
                 })
             except HTTPException as exc:
-                detail = str(exc.detail)
+                detail, status, extras = _source_result_error_from_exception(exc)
                 warnings.append(f"Google 日历：{detail}")
                 source_results.append({
                     "source": "gcal",
                     "label": "Google 日历",
-                    "status": "failed",
+                    "status": status,
                     "imported_count": 0,
                     "skipped_count": 0,
                     "date_range": [],
@@ -588,6 +617,7 @@ async def ingest_configured_sources(req: ConfiguredSourcesRequest, db: AsyncSess
                     "warnings": [detail],
                     "collected_sources": [],
                     "source_breakdown": {},
+                    **extras,
                 })
     else:
         _append_google_disabled_source("gcal", "Google 日历")
@@ -622,12 +652,12 @@ async def ingest_configured_sources(req: ConfiguredSourcesRequest, db: AsyncSess
                     "source_breakdown": {"gmail": gmail_result.get("imported_count", 0)},
                 })
             except HTTPException as exc:
-                detail = str(exc.detail)
+                detail, status, extras = _source_result_error_from_exception(exc)
                 warnings.append(f"Gmail：{detail}")
                 source_results.append({
                     "source": "gmail",
                     "label": "Gmail",
-                    "status": "failed",
+                    "status": status,
                     "imported_count": 0,
                     "skipped_count": 0,
                     "date_range": [],
@@ -635,6 +665,7 @@ async def ingest_configured_sources(req: ConfiguredSourcesRequest, db: AsyncSess
                     "warnings": [detail],
                     "collected_sources": [],
                     "source_breakdown": {},
+                    **extras,
                 })
     else:
         _append_google_disabled_source("gmail", "Gmail")

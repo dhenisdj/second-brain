@@ -49,6 +49,10 @@ export interface CollectSourceResult {
   warnings?: string[]
   collected_sources?: string[]
   source_breakdown?: Record<string, number>
+  code?: string
+  action_label?: string
+  action_url?: string
+  project_id?: string
 }
 
 export interface CollectSourcesResponse extends IngestResponse {
@@ -167,6 +171,9 @@ export interface AppSettings {
   google_credentials_configured: boolean
   google_calendar_authorized: boolean
   google_gmail_authorized: boolean
+  google_cloud_project_id?: string
+  google_calendar_api_enable_url?: string
+  google_gmail_api_enable_url?: string
   openai_api_key_configured: boolean
   deepseek_api_key_configured: boolean
   nvidia_api_key_configured: boolean

@@ -8,8 +8,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.database import get_db
 from app.models.setting import Setting
 from app.services.gcal_collector import (
+    CALENDAR_API_SLUG,
+    GMAIL_API_SLUG,
+    build_google_api_enable_url,
     build_google_authorization_url,
     complete_google_authorization,
+    get_google_client_project_id,
     has_google_calendar_authorized_token,
     has_google_gmail_authorized_token,
     has_google_client_credentials,
@@ -148,6 +152,9 @@ def _build_public_settings(all_settings: dict) -> dict:
     public_settings["google_credentials_configured"] = has_google_client_credentials()
     public_settings["google_calendar_authorized"] = has_google_calendar_authorized_token()
     public_settings["google_gmail_authorized"] = has_google_gmail_authorized_token()
+    public_settings["google_cloud_project_id"] = get_google_client_project_id()
+    public_settings["google_calendar_api_enable_url"] = build_google_api_enable_url(CALENDAR_API_SLUG)
+    public_settings["google_gmail_api_enable_url"] = build_google_api_enable_url(GMAIL_API_SLUG)
     return public_settings
 
 

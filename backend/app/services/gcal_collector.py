@@ -6,21 +6,52 @@ from datetime import datetime, timedelta, timezone
 from html import unescape
 from html.parser import HTMLParser
 from pathlib import Path
+from urllib.parse import quote
 
 from google.oauth2.credentials import Credentials
 from google_auth_oauthlib.flow import InstalledAppFlow
 from google.auth.transport.requests import Request
 from googleapiclient.discovery import build
+from googleapiclient.errors import HttpError
 
 logger = logging.getLogger(__name__)
 
 CALENDAR_SCOPES = ["https://www.googleapis.com/auth/calendar.readonly"]
 GMAIL_SCOPES = ["https://www.googleapis.com/auth/gmail.readonly"]
 SCOPES = CALENDAR_SCOPES + GMAIL_SCOPES
+GMAIL_API_SLUG = "gmail.googleapis.com"
+CALENDAR_API_SLUG = "calendar-json.googleapis.com"
 CRED_DIR = Path(os.getenv("SECOND_BRAIN_CREDENTIALS_DIR", Path(__file__).parent.parent.parent / "credentials"))
 CLIENT_SECRET_PATH = CRED_DIR / "google_credentials.json"
 TOKEN_PATH = CRED_DIR / "gcal_token.json"
 _PENDING_OAUTH_FLOWS: dict[str, InstalledAppFlow] = {}
+
+
+class GoogleApiNotEnabledError(RuntimeError):
+    def __init__(
+        self,
+        api_slug: str,
+        api_label: str,
+        project_id: str | None = None,
+        message: str | None = None,
+    ):
+        self.api_slug = api_slug
+        self.api_label = api_label
+        self.project_id = project_id or get_google_client_project_id()
+        self.action_url = build_google_api_enable_url(api_slug, self.project_id)
+        super().__init__(
+            message
+            or f"{api_label} 尚未在 Google Cloud 项目中启用，请打开 Google Cloud Console 开启后等待几分钟再重试。"
+        )
+
+    def to_detail(self) -> dict:
+        return {
+            "code": "google_api_disabled",
+            "message": str(self),
+            "action_label": f"开启 {self.api_label}",
+            "action_url": self.action_url,
+            "project_id": self.project_id,
+        }
 
 
 def _validate_client_secret_payload(payload: dict) -> None:
@@ -39,6 +70,74 @@ def _validate_client_secret_payload(payload: dict) -> None:
 
 def has_google_client_credentials() -> bool:
     return CLIENT_SECRET_PATH.exists()
+
+
+def _load_google_client_config() -> dict:
+    if not CLIENT_SECRET_PATH.exists():
+        return {}
+    try:
+        payload = json.loads(CLIENT_SECRET_PATH.read_text(encoding="utf-8"))
+    except Exception:
+        return {}
+    return payload.get("installed") or payload.get("web") or {}
+
+
+def get_google_client_project_id() -> str:
+    return str(_load_google_client_config().get("project_id") or "").strip()
+
+
+def build_google_api_enable_url(api_slug: str, project_id: str | None = None) -> str:
+    project = (project_id or get_google_client_project_id() or "").strip()
+    url = f"https://console.developers.google.com/apis/api/{api_slug}/overview"
+    if project:
+        url += f"?project={quote(project)}"
+    return url
+
+
+def _extract_project_id_from_google_error(message: str) -> str:
+    patterns = [
+        r"[?&]project=([A-Za-z0-9:_-]+)",
+        r"\bproject\s+([A-Za-z0-9:_-]+)",
+    ]
+    for pattern in patterns:
+        match = re.search(pattern, message)
+        if match:
+            return match.group(1).strip()
+    return ""
+
+
+def raise_google_api_not_enabled(exc: HttpError, api_slug: str, api_label: str) -> None:
+    if getattr(exc.resp, "status", None) != 403:
+        return
+
+    raw_content = getattr(exc, "content", b"") or b""
+    if isinstance(raw_content, bytes):
+        content = raw_content.decode("utf-8", errors="replace")
+    else:
+        content = str(raw_content)
+    error_text = f"{exc} {content}"
+
+    disabled_markers = (
+        "accessNotConfigured",
+        "has not been used",
+        "it is disabled",
+    )
+    if not any(marker in error_text for marker in disabled_markers):
+        return
+
+    raise GoogleApiNotEnabledError(
+        api_slug=api_slug,
+        api_label=api_label,
+        project_id=_extract_project_id_from_google_error(error_text),
+    ) from exc
+
+
+def execute_google_request(request, api_slug: str, api_label: str) -> dict:
+    try:
+        return request.execute()
+    except HttpError as exc:
+        raise_google_api_not_enabled(exc, api_slug, api_label)
+        raise
 
 
 def _token_has_scopes(creds: Credentials, required_scopes: list[str] | None = None) -> bool:
@@ -361,11 +460,17 @@ def collect_gcal_events(user_email: str, days: int = 2) -> dict:
 
     calendar_ids = []
     try:
-        cal_list = service.calendarList().list().execute()
+        cal_list = execute_google_request(
+            service.calendarList().list(),
+            CALENDAR_API_SLUG,
+            "Google Calendar API",
+        )
         for cal in cal_list.get("items", []):
             role = cal.get("accessRole", "")
             if role in ("owner", "writer", "reader"):
                 calendar_ids.append(cal["id"])
+    except GoogleApiNotEnabledError:
+        raise
     except Exception:
         calendar_ids = ["primary"]
 
@@ -376,15 +481,19 @@ def collect_gcal_events(user_email: str, days: int = 2) -> dict:
     for cal_id in calendar_ids:
         page_token = None
         while True:
-            result = service.events().list(
-                calendarId=cal_id,
-                timeMin=time_min,
-                timeMax=time_max,
-                singleEvents=True,
-                orderBy="startTime",
-                maxResults=250,
-                pageToken=page_token,
-            ).execute()
+            result = execute_google_request(
+                service.events().list(
+                    calendarId=cal_id,
+                    timeMin=time_min,
+                    timeMax=time_max,
+                    singleEvents=True,
+                    orderBy="startTime",
+                    maxResults=250,
+                    pageToken=page_token,
+                ),
+                CALENDAR_API_SLUG,
+                "Google Calendar API",
+            )
 
             items = result.get("items", [])
             all_events.extend(items)

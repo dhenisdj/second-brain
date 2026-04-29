@@ -4,6 +4,7 @@ import axios from 'axios'
 import toast from 'react-hot-toast'
 import { useSettings, useUpdateSettings, useUploadGoogleCredentials, useStartGoogleCalendarAuthorization } from '../hooks/queries'
 import type { AppSettings, SettingsUpdatePayload } from '../types'
+import { openExternalUrl } from '../utils/openExternalUrl'
 
 const NVIDIA_MODELS = [
   { id: 'deepseek-ai/deepseek-v3.2', name: 'DeepSeek V3.2' },
@@ -37,28 +38,6 @@ const EMPTY_CLEARED_FLAGS: ClearedSecretFlags = {
   clear_nvidia_api_key: false,
   clear_openai_api_key: false,
   clear_deepseek_api_key: false,
-}
-
-function openExternalUrl(url: string) {
-  const nativeBridge = (window as unknown as {
-    webkit?: {
-      messageHandlers?: {
-        secondBrainNative?: {
-          postMessage: (payload: { type: string; url: string }) => void
-        }
-      }
-    }
-  }).webkit?.messageHandlers?.secondBrainNative
-
-  if (nativeBridge) {
-    nativeBridge.postMessage({ type: 'openExternal', url })
-    return
-  }
-
-  const opened = window.open(url, '_blank', 'noopener,noreferrer')
-  if (!opened) {
-    window.location.assign(url)
-  }
 }
 
 export default function SettingsPage() {
@@ -578,6 +557,32 @@ export default function SettingsPage() {
                   </button>
                 </div>
               </div>
+
+              {form.gmail_enabled && form.google_credentials_configured && (
+                <div className="rounded-lg border border-amber-200 bg-amber-50 p-3">
+                  <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                    <div>
+                      <p className="text-xs font-medium text-amber-800">Gmail API 前置权限</p>
+                      <p className="text-xs text-amber-700 mt-1">
+                        首次采集 Gmail 前，需要在当前 OAuth 项目的 Google Cloud Console 中启用 Gmail API；开启后等待几分钟再一键采集。
+                      </p>
+                      {form.google_cloud_project_id && (
+                        <p className="text-xs text-amber-700 mt-1">当前项目：{form.google_cloud_project_id}</p>
+                      )}
+                    </div>
+                    {form.google_gmail_api_enable_url && (
+                      <button
+                        type="button"
+                        onClick={() => openExternalUrl(form.google_gmail_api_enable_url!)}
+                        className="inline-flex items-center justify-center gap-1.5 whitespace-nowrap rounded-lg border border-amber-200 bg-white px-3 py-2 text-xs font-medium text-amber-800 hover:border-amber-300"
+                      >
+                        <ExternalLink className="w-3.5 h-3.5" />
+                        开启 Gmail API
+                      </button>
+                    )}
+                  </div>
+                </div>
+              )}
 
               <div className="grid gap-3 md:grid-cols-2">
                 <SourceToggleRow

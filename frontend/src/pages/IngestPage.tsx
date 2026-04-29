@@ -1,10 +1,11 @@
 import { useState, type ReactNode } from 'react'
 import { Link } from 'react-router-dom'
-import { PenLine, Clock, Loader2, Plus, Trash2, X, Sparkles } from 'lucide-react'
+import { PenLine, Clock, Loader2, Plus, Trash2, X, Sparkles, ExternalLink } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { useCollectConfiguredSources, useIngestChromeDevtoolsHistory, useIngestManual, useEvents, useSettings } from '../hooks/queries'
 import type { ActivityEvent, CollectSourceResult, ManualEntry } from '../types'
 import { getTodayDateInputValue } from '../utils/date'
+import { openExternalUrl } from '../utils/openExternalUrl'
 
 const MCP_BATCH_SIZE = 10
 const MCP_MAX_PAGES = 80
@@ -58,6 +59,14 @@ function getCollectResultStatus(result: CollectSourceResult) {
   if (result.status === 'misconfigured') return '待完善配置'
   if (result.status === 'disabled') return '已关闭'
   return result.imported_count > 0 ? '已导入数据' : '暂无新数据'
+}
+
+function getAxiosErrorDetail(error: any) {
+  const detail = error?.response?.data?.detail
+  if (detail && typeof detail === 'object') {
+    return detail.message ?? '采集失败，请检查数据源配置'
+  }
+  return detail ?? '采集失败，请检查数据源配置'
 }
 
 export default function IngestPage() {
@@ -236,14 +245,15 @@ export default function IngestPage() {
         }
       }
     } catch (e: any) {
+      const detail = getAxiosErrorDetail(e)
       if (mcpStarted) {
         setMcpProgress(current => ({
           ...current,
           status: 'failed',
-          message: e?.response?.data?.detail ?? 'Chrome MCP 内网明细采集失败，可稍后重试。',
+          message: detail || 'Chrome MCP 内网明细采集失败，可稍后重试。',
         }))
       }
-      toast.error(e?.response?.data?.detail ?? '采集失败，请检查数据源配置')
+      toast.error(detail)
     }
   }
 
@@ -371,6 +381,16 @@ export default function IngestPage() {
                     ? `导入 ${result.imported_count} 条${result.skipped_count ? `，跳过 ${result.skipped_count} 条重复记录` : ''}`
                     : result.message ?? '本次没有新增数据'}
                 </p>
+                {result.action_url && (
+                  <button
+                    type="button"
+                    onClick={() => openExternalUrl(result.action_url!)}
+                    className="mt-2 inline-flex items-center gap-1.5 rounded-lg border border-amber-200 bg-white px-2.5 py-1.5 text-xs font-medium text-amber-800 hover:border-amber-300"
+                  >
+                    <ExternalLink className="h-3.5 w-3.5" />
+                    {result.action_label ?? '打开处理'}
+                  </button>
+                )}
               </div>
             ))}
           </div>
