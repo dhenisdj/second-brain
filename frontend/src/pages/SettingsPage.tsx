@@ -24,6 +24,8 @@ const PROVIDERS = [
   { id: 'ollama' as const, name: 'Ollama', desc: '本地模型（完全私有）' },
 ]
 
+const FULL_DISK_ACCESS_SETTINGS_URL = 'x-apple.systempreferences:com.apple.preference.security?Privacy_AllFiles'
+
 type SecretFieldKey = 'nvidia_api_key' | 'openai_api_key' | 'deepseek_api_key'
 type SecretDrafts = Record<SecretFieldKey, string>
 type ClearedSecretFlags = Record<`clear_${SecretFieldKey}`, boolean>
@@ -487,6 +489,8 @@ export default function SettingsPage() {
                 statusTone={form.safari_history_enabled ? 'bg-sky-100 text-sky-700' : 'bg-gray-100 text-gray-500'}
                 enabled={!!form.safari_history_enabled}
                 onToggle={checked => setForm({ ...form, safari_history_enabled: checked })}
+                actionLabel="打开完全磁盘访问"
+                onAction={() => openExternalUrl(FULL_DISK_ACCESS_SETTINGS_URL)}
               />
               <div className="rounded-lg bg-slate-50 px-3 py-2 text-xs text-slate-600">
                 浏览器组不需要额外账号配置；Chrome 内网明细依赖已配置的 Chrome MCP Native Messaging Bridge。
@@ -558,28 +562,65 @@ export default function SettingsPage() {
                 </div>
               </div>
 
-              {form.gmail_enabled && form.google_credentials_configured && (
+              {form.google_credentials_configured && (
                 <div className="rounded-lg border border-amber-200 bg-amber-50 p-3">
                   <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                     <div>
-                      <p className="text-xs font-medium text-amber-800">Gmail API 前置权限</p>
+                      <p className="text-xs font-medium text-amber-800">Google API 前置权限</p>
                       <p className="text-xs text-amber-700 mt-1">
-                        首次采集 Gmail 前，需要在当前 OAuth 项目的 Google Cloud Console 中启用 Gmail API；开启后等待几分钟再一键采集。
+                        首次采集日历或 Gmail 前，需要在当前 OAuth 项目的 Google Cloud Console 中启用对应 API；开启后等待几分钟再一键采集。
                       </p>
                       {form.google_cloud_project_id && (
                         <p className="text-xs text-amber-700 mt-1">当前项目：{form.google_cloud_project_id}</p>
                       )}
                     </div>
-                    {form.google_gmail_api_enable_url && (
-                      <button
-                        type="button"
-                        onClick={() => openExternalUrl(form.google_gmail_api_enable_url!)}
-                        className="inline-flex items-center justify-center gap-1.5 whitespace-nowrap rounded-lg border border-amber-200 bg-white px-3 py-2 text-xs font-medium text-amber-800 hover:border-amber-300"
-                      >
-                        <ExternalLink className="w-3.5 h-3.5" />
-                        开启 Gmail API
-                      </button>
-                    )}
+                    <div className="flex flex-col gap-2 sm:flex-row">
+                      {form.google_calendar_api_enable_url && (
+                        <button
+                          type="button"
+                          onClick={() => openExternalUrl(form.google_calendar_api_enable_url!)}
+                          className="inline-flex items-center justify-center gap-1.5 whitespace-nowrap rounded-lg border border-amber-200 bg-white px-3 py-2 text-xs font-medium text-amber-800 hover:border-amber-300"
+                        >
+                          <ExternalLink className="w-3.5 h-3.5" />
+                          检查日历 API
+                        </button>
+                      )}
+                      {form.google_gmail_api_enable_url && (
+                        <button
+                          type="button"
+                          onClick={() => openExternalUrl(form.google_gmail_api_enable_url!)}
+                          className="inline-flex items-center justify-center gap-1.5 whitespace-nowrap rounded-lg border border-amber-200 bg-white px-3 py-2 text-xs font-medium text-amber-800 hover:border-amber-300"
+                        >
+                          <ExternalLink className="w-3.5 h-3.5" />
+                          检查 Gmail API
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {!form.google_credentials_configured && (
+                <div className="rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-xs text-gray-500">
+                  上传 OAuth JSON 后会显示 Google Calendar API 和 Gmail API 的检查入口。
+                </div>
+              )}
+
+              {form.gmail_enabled && form.google_credentials_configured && !form.google_gmail_authorized && (
+                <div className="rounded-lg border border-amber-200 bg-amber-50 p-3">
+                  <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                    <p className="text-xs text-amber-700">
+                      Gmail 已启用但当前 token 尚未包含 Gmail 只读权限，请先补全 Google 数据源授权。
+                    </p>
+                    <button
+                      type="button"
+                      onClick={handleGoogleAuthorize}
+                      disabled={startGoogleAuthMut.isPending}
+                      className="inline-flex items-center justify-center gap-1.5 whitespace-nowrap rounded-lg border border-amber-200 bg-white px-3 py-2 text-xs font-medium text-amber-800 hover:border-amber-300 disabled:opacity-50"
+                    >
+                      {startGoogleAuthMut.isPending ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <ExternalLink className="w-3.5 h-3.5" />}
+                      补全 Gmail 授权
+                    </button>
                   </div>
                 </div>
               )}
@@ -733,6 +774,8 @@ function SourceToggleRow({
   statusTone,
   enabled,
   onToggle,
+  actionLabel,
+  onAction,
 }: {
   icon: ReactNode
   title: string
@@ -741,6 +784,8 @@ function SourceToggleRow({
   statusTone: string
   enabled: boolean
   onToggle: (checked: boolean) => void
+  actionLabel?: string
+  onAction?: () => void
 }) {
   return (
     <div className="flex items-start justify-between gap-3 rounded-lg border border-gray-100 bg-white px-3 py-3">
@@ -756,7 +801,18 @@ function SourceToggleRow({
           <p className="mt-1 text-xs leading-5 text-gray-500">{description}</p>
         </div>
       </div>
-      <Toggle checked={enabled} onChange={onToggle} />
+      <div className="flex shrink-0 items-center gap-2">
+        {actionLabel && onAction && (
+          <button
+            type="button"
+            onClick={onAction}
+            className="hidden whitespace-nowrap rounded-lg border border-gray-200 bg-white px-2.5 py-1.5 text-xs font-medium text-gray-600 hover:border-gray-300 sm:inline-flex"
+          >
+            {actionLabel}
+          </button>
+        )}
+        <Toggle checked={enabled} onChange={onToggle} />
+      </div>
     </div>
   )
 }

@@ -88,7 +88,7 @@ def get_google_client_project_id() -> str:
 
 def build_google_api_enable_url(api_slug: str, project_id: str | None = None) -> str:
     project = (project_id or get_google_client_project_id() or "").strip()
-    url = f"https://console.developers.google.com/apis/api/{api_slug}/overview"
+    url = f"https://console.cloud.google.com/apis/library/{api_slug}"
     if project:
         url += f"?project={quote(project)}"
     return url
