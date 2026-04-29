@@ -527,8 +527,8 @@ export default function SettingsPage() {
                     : 'bg-gray-100 text-gray-500'
               }
             >
-              <div className="grid gap-3 md:grid-cols-[minmax(0,1fr)_auto] md:items-end">
-                <div>
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-start">
+                <div className="w-full sm:w-80 lg:w-96">
                   <label className="block text-xs font-medium text-gray-500 mb-1">Google 邮箱地址</label>
                   <input
                     value={form.google_user_email ?? ''}
@@ -549,7 +549,7 @@ export default function SettingsPage() {
                 />
                 <label
                   htmlFor="google-credentials-file"
-                  className={`inline-flex h-10 items-center justify-center gap-1.5 whitespace-nowrap rounded-lg border border-gray-200 bg-white px-3 text-xs font-medium text-gray-700 hover:border-gray-300 ${
+                  className={`inline-flex h-10 items-center justify-center gap-1.5 whitespace-nowrap rounded-lg border border-gray-200 bg-white px-3 text-xs font-medium text-gray-700 hover:border-gray-300 sm:mt-5 ${
                     uploadGoogleCredentialsMut.isPending ? 'pointer-events-none opacity-50' : 'cursor-pointer'
                   }`}
                 >
