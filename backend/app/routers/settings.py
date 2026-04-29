@@ -10,7 +10,8 @@ from app.models.setting import Setting
 from app.services.gcal_collector import (
     build_google_authorization_url,
     complete_google_authorization,
-    has_google_authorized_token,
+    has_google_calendar_authorized_token,
+    has_google_gmail_authorized_token,
     has_google_client_credentials,
     save_google_client_credentials,
 )
@@ -37,6 +38,7 @@ SETTING_KEYS = [
     "chrome_history_enabled",
     "safari_history_enabled",
     "google_calendar_enabled",
+    "gmail_enabled",
     "git_activity_enabled",
     "git_repo_paths",
     "git_author_filter",
@@ -58,6 +60,7 @@ DEFAULT_SETTINGS = {
     "chrome_history_enabled": True,
     "safari_history_enabled": True,
     "google_calendar_enabled": False,
+    "gmail_enabled": False,
     "git_activity_enabled": False,
     "git_repo_paths": "",
     "git_author_filter": "",
@@ -86,6 +89,7 @@ class SettingsUpdate(BaseModel):
     chrome_history_enabled: Optional[bool] = None
     safari_history_enabled: Optional[bool] = None
     google_calendar_enabled: Optional[bool] = None
+    gmail_enabled: Optional[bool] = None
     git_activity_enabled: Optional[bool] = None
     git_repo_paths: Optional[str] = None
     git_author_filter: Optional[str] = None
@@ -142,7 +146,8 @@ def _build_public_settings(all_settings: dict) -> dict:
         public_settings[f"{key}_configured"] = bool(all_settings.get(key))
         public_settings[key] = ""
     public_settings["google_credentials_configured"] = has_google_client_credentials()
-    public_settings["google_calendar_authorized"] = has_google_authorized_token()
+    public_settings["google_calendar_authorized"] = has_google_calendar_authorized_token()
+    public_settings["google_gmail_authorized"] = has_google_gmail_authorized_token()
     return public_settings
 
 
@@ -189,12 +194,12 @@ async def complete_google_calendar_authorization(
 ):
     if error:
         return HTMLResponse(
-            "<html><body><h2>Google 日历授权失败</h2><p>请回到 Second Brain 配置页重新授权。</p></body></html>",
+            "<html><body><h2>Google 数据源授权失败</h2><p>请回到 Second Brain 配置页重新授权。</p></body></html>",
             status_code=400,
         )
     if not code:
         return HTMLResponse(
-            "<html><body><h2>Google 日历授权失败</h2><p>回调缺少授权码。</p></body></html>",
+            "<html><body><h2>Google 数据源授权失败</h2><p>回调缺少授权码。</p></body></html>",
             status_code=400,
         )
 
@@ -202,17 +207,17 @@ async def complete_google_calendar_authorization(
         complete_google_authorization(state, code)
     except ValueError as exc:
         return HTMLResponse(
-            f"<html><body><h2>Google 日历授权失败</h2><p>{exc}</p></body></html>",
+            f"<html><body><h2>Google 数据源授权失败</h2><p>{exc}</p></body></html>",
             status_code=400,
         )
     except Exception:
         return HTMLResponse(
-            "<html><body><h2>Google 日历授权失败</h2><p>保存授权 token 时出现错误，请回到配置页重试。</p></body></html>",
+            "<html><body><h2>Google 数据源授权失败</h2><p>保存授权 token 时出现错误，请回到配置页重试。</p></body></html>",
             status_code=500,
         )
 
     return HTMLResponse(
-        "<html><body><h2>Google 日历授权完成</h2><p>可以回到 Second Brain 继续采集。</p></body></html>"
+        "<html><body><h2>Google 数据源授权完成</h2><p>可以回到 Second Brain 继续采集。</p></body></html>"
     )
 
 

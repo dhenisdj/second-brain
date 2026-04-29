@@ -19,6 +19,7 @@ class TestSettings:
         assert data["chrome_history_enabled"] is True
         assert data["safari_history_enabled"] is True
         assert data["google_calendar_enabled"] is False
+        assert data["gmail_enabled"] is False
         assert data["git_activity_enabled"] is False
         assert data["git_repo_paths"] == ""
         assert data["git_author_filter"] == ""
@@ -31,6 +32,7 @@ class TestSettings:
         assert data["deepseek_model"] == "deepseek-v4-flash"
         assert "google_credentials_configured" in data
         assert "google_calendar_authorized" in data
+        assert "google_gmail_authorized" in data
 
     async def test_update_llm_provider_to_ollama(self, client):
         resp = await client.put("/api/settings", json={
@@ -109,6 +111,7 @@ class TestSettings:
             "chrome_history_enabled": False,
             "safari_history_enabled": True,
             "google_calendar_enabled": True,
+            "gmail_enabled": True,
             "git_activity_enabled": True,
             "git_repo_paths": "/Users/test/project",
             "git_author_filter": "tester@example.com",
@@ -119,6 +122,7 @@ class TestSettings:
         assert data["chrome_history_enabled"] is False
         assert data["safari_history_enabled"] is True
         assert data["google_calendar_enabled"] is True
+        assert data["gmail_enabled"] is True
         assert data["git_activity_enabled"] is True
         assert data["git_repo_paths"] == "/Users/test/project"
         assert data["git_author_filter"] == "tester@example.com"
@@ -206,6 +210,7 @@ class TestSettings:
         assert resp.status_code == 200
         assert resp.json()["google_credentials_configured"] is True
         assert resp.json()["google_calendar_authorized"] is False
+        assert resp.json()["google_gmail_authorized"] is False
         assert client_secret_path.exists()
         assert json.loads(client_secret_path.read_text(encoding="utf-8"))["installed"]["client_id"] == payload["installed"]["client_id"]
         assert not token_path.exists()
@@ -246,5 +251,6 @@ class TestSettings:
         assert resp.status_code == 200
         data = resp.json()
         assert data["authorization_url"].startswith("https://accounts.google.com/o/oauth2/auth")
+        assert "gmail.readonly" in data["authorization_url"]
         assert data["state"]
         assert data["redirect_uri"] == "http://test/"

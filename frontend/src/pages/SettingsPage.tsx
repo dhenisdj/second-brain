@@ -1,5 +1,5 @@
 import { useRef, useState, useEffect, type ReactNode } from 'react'
-import { Settings, Save, Loader2, Globe, Calendar, Upload, ExternalLink, GitBranch } from 'lucide-react'
+import { Settings, Save, Loader2, Globe, Calendar, Upload, ExternalLink, GitBranch, Mail } from 'lucide-react'
 import axios from 'axios'
 import toast from 'react-hot-toast'
 import { useSettings, useUpdateSettings, useUploadGoogleCredentials, useStartGoogleCalendarAuthorization } from '../hooks/queries'
@@ -113,6 +113,7 @@ export default function SettingsPage() {
       chrome_history_enabled: form.chrome_history_enabled,
       safari_history_enabled: form.safari_history_enabled,
       google_calendar_enabled: form.google_calendar_enabled,
+      gmail_enabled: form.gmail_enabled,
       git_activity_enabled: form.git_activity_enabled,
       git_repo_paths: form.git_repo_paths,
       git_author_filter: form.git_author_filter,
@@ -148,7 +149,10 @@ export default function SettingsPage() {
     }
 
     updateMut.mutate(payload, {
-      onSuccess: () => toast.success('设置已保存'),
+      onSuccess: saved => {
+        setForm(saved)
+        toast.success('设置已保存')
+      },
       onError: () => toast.error('保存失败'),
     })
   }
@@ -181,7 +185,10 @@ export default function SettingsPage() {
         }
         googleAuthPollRef.current = window.setInterval(async () => {
           const result = await refetchSettings()
-          if (result.data?.google_calendar_authorized || Date.now() - startedAt > 120000) {
+          if (
+            (result.data?.google_calendar_authorized && result.data?.google_gmail_authorized)
+            || Date.now() - startedAt > 120000
+          ) {
             if (googleAuthPollRef.current) {
               window.clearInterval(googleAuthPollRef.current)
               googleAuthPollRef.current = null
@@ -191,7 +198,7 @@ export default function SettingsPage() {
       },
       onError: error => {
         const detail = axios.isAxiosError(error) ? error.response?.data?.detail : null
-        const message = detail || (error instanceof Error ? error.message : 'Google 日历授权发起失败')
+        const message = detail || (error instanceof Error ? error.message : 'Google 数据源授权发起失败')
         toast.error(message)
       },
     })
@@ -199,18 +206,66 @@ export default function SettingsPage() {
 
   if (isLoading) return <div className="flex justify-center py-20"><Loader2 className="w-5 h-5 animate-spin text-gray-400" /></div>
 
-  const googleStatus = !form.google_calendar_enabled
+  const sourceConfigDirty = !!settings && (
+    form.chrome_history_enabled !== settings.chrome_history_enabled ||
+    form.safari_history_enabled !== settings.safari_history_enabled ||
+    form.google_calendar_enabled !== settings.google_calendar_enabled ||
+    form.gmail_enabled !== settings.gmail_enabled ||
+    form.google_user_email !== settings.google_user_email ||
+    form.git_activity_enabled !== settings.git_activity_enabled ||
+    (form.git_repo_paths ?? '') !== (settings.git_repo_paths ?? '') ||
+    (form.git_author_filter ?? '') !== (settings.git_author_filter ?? '')
+  )
+  const gitConfigDirty = !!settings && (
+    form.git_activity_enabled !== settings.git_activity_enabled ||
+    (form.git_repo_paths ?? '') !== (settings.git_repo_paths ?? '') ||
+    (form.git_author_filter ?? '') !== (settings.git_author_filter ?? '')
+  )
+  const googleConfigDirty = !!settings && (
+    form.google_calendar_enabled !== settings.google_calendar_enabled ||
+    form.google_user_email !== settings.google_user_email
+  )
+  const gmailConfigDirty = !!settings && (
+    form.gmail_enabled !== settings.gmail_enabled ||
+    form.google_user_email !== settings.google_user_email
+  )
+
+  const googleStatus = googleConfigDirty
+    ? '待保存'
+    : !form.google_calendar_enabled
     ? '已关闭'
     : form.google_user_email && form.google_credentials_configured && form.google_calendar_authorized
       ? '已启用'
       : form.google_user_email && form.google_credentials_configured
         ? '待授权'
         : '待完善配置'
-  const gitStatus = !form.git_activity_enabled
+  const gitStatus = gitConfigDirty
+    ? '待保存'
+    : !form.git_activity_enabled
     ? '已关闭'
     : form.git_repo_paths?.trim()
       ? '已启用'
       : '待填写仓库'
+  const gmailStatus = gmailConfigDirty
+    ? '待保存'
+    : !form.gmail_enabled
+    ? '已关闭'
+    : form.google_user_email && form.google_credentials_configured && form.google_gmail_authorized
+      ? '已启用'
+      : form.google_user_email && form.google_credentials_configured
+        ? '待授权'
+        : '待完善配置'
+  const googleAuthComplete = !!form.google_calendar_authorized && !!form.google_gmail_authorized
+  const googleAuthStatusText = googleAuthComplete
+    ? '已保存日历与 Gmail 授权 token'
+    : form.google_calendar_authorized
+      ? '已保存日历授权；Gmail 只读未授权'
+      : '未完成账号授权'
+  const googleAuthButtonText = googleAuthComplete
+    ? '重新授权'
+    : form.google_calendar_authorized
+      ? '重新授权补全 Gmail'
+      : '授权 Google 数据源'
 
   return (
     <div>
@@ -393,11 +448,27 @@ export default function SettingsPage() {
         </div>
 
         <div className="bg-white rounded-xl border border-gray-200 p-6">
-          <div className="flex items-center gap-2 mb-2">
-            <Settings className="w-4 h-4 text-gray-500" />
-            <h3 className="font-medium text-sm text-gray-700">数据源配置</h3>
+          <div className="flex flex-col gap-3 mb-2 sm:flex-row sm:items-center sm:justify-between">
+            <div className="flex items-center gap-2">
+              <Settings className="w-4 h-4 text-gray-500" />
+              <h3 className="font-medium text-sm text-gray-700">数据源配置</h3>
+              {sourceConfigDirty && <span className="px-2 py-0.5 rounded-full bg-amber-100 text-amber-700 text-[11px]">有未保存改动</span>}
+            </div>
+            <button
+              onClick={handleSave}
+              disabled={updateMut.isPending || !sourceConfigDirty}
+              className="inline-flex items-center justify-center gap-1.5 rounded-lg bg-blue-600 px-3 py-2 text-xs font-medium text-white hover:bg-blue-700 disabled:opacity-50"
+            >
+              {updateMut.isPending ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Save className="w-3.5 h-3.5" />}
+              保存数据源配置
+            </button>
           </div>
           <p className="text-xs text-gray-400 mb-5">`干了啥` 页面的一键采集会读取这里已启用且已完成配置的数据源。</p>
+          {sourceConfigDirty && (
+            <div className="mb-4 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-700">
+              当前改动还只在页面表单里，保存后才会写入后端并被一键采集使用。
+            </div>
+          )}
 
           <div className="space-y-4">
             <SourceCard
@@ -434,7 +505,9 @@ export default function SettingsPage() {
               description="读取本地 Git 仓库或工作区目录最近 2 天的提交记录。"
               status={gitStatus}
               statusTone={
-                !form.git_activity_enabled
+                gitConfigDirty
+                  ? 'bg-amber-100 text-amber-700'
+                  : !form.git_activity_enabled
                   ? 'bg-gray-100 text-gray-500'
                   : form.git_repo_paths?.trim()
                     ? 'bg-slate-100 text-slate-700'
@@ -469,12 +542,38 @@ export default function SettingsPage() {
             </SourceCard>
 
             <SourceCard
+              icon={<Mail className="w-4 h-4 text-rose-600" />}
+              title="Gmail"
+              description="采集最近 2 天的邮件主题、收发件人、摘要和正文片段，补齐异步沟通记录。"
+              status={gmailStatus}
+              statusTone={
+                gmailConfigDirty
+                  ? 'bg-amber-100 text-amber-700'
+                  : !form.gmail_enabled
+                  ? 'bg-gray-100 text-gray-500'
+                  : form.google_user_email && form.google_credentials_configured
+                    ? form.google_gmail_authorized
+                      ? 'bg-rose-100 text-rose-700'
+                      : 'bg-amber-100 text-amber-700'
+                    : 'bg-amber-100 text-amber-700'
+              }
+              enabled={!!form.gmail_enabled}
+              onToggle={checked => setForm({ ...form, gmail_enabled: checked })}
+            >
+              <div className="rounded-lg bg-rose-50/60 px-3 py-2 text-xs text-rose-700">
+                Gmail 复用下方 Google 邮箱、OAuth JSON 和授权；授权时会同时申请日历只读与 Gmail 只读权限。
+              </div>
+            </SourceCard>
+
+            <SourceCard
               icon={<Calendar className="w-4 h-4 text-orange-600" />}
               title="Google 日历"
               description="采集最近 2 天的日历事件，适合补齐会议、预约和时间块。"
               status={googleStatus}
               statusTone={
-                !form.google_calendar_enabled
+                googleConfigDirty
+                  ? 'bg-amber-100 text-amber-700'
+                  : !form.google_calendar_enabled
                   ? 'bg-gray-100 text-gray-500'
                   : form.google_user_email && form.google_credentials_configured
                     ? form.google_calendar_authorized
@@ -494,7 +593,7 @@ export default function SettingsPage() {
                     placeholder="your.name@company.com"
                     className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm outline-none focus:ring-1 focus:ring-blue-500"
                   />
-                  <p className="text-xs text-gray-400 mt-1">用于采集该账号可访问的 Google Calendar 事件。</p>
+                  <p className="text-xs text-gray-400 mt-1">用于采集该账号可访问的 Google Calendar 事件和 Gmail 邮件。</p>
                 </div>
                 <div className="rounded-lg border border-gray-200 bg-gray-50 p-3">
                   <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
@@ -527,9 +626,9 @@ export default function SettingsPage() {
                 <div className="rounded-lg border border-gray-200 bg-gray-50 p-3">
                   <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                     <div>
-                      <p className="text-xs font-medium text-gray-600">Google 日历授权</p>
+                      <p className="text-xs font-medium text-gray-600">Google 数据源授权</p>
                       <p className="text-xs text-gray-400 mt-1">
-                        {form.google_calendar_authorized ? '已保存授权 token' : '未完成账号授权'}
+                        {googleAuthStatusText}
                       </p>
                     </div>
                     <button
@@ -538,7 +637,7 @@ export default function SettingsPage() {
                       className="inline-flex items-center justify-center gap-1.5 rounded-lg border border-gray-200 bg-white px-3 py-2 text-xs font-medium text-gray-700 hover:border-gray-300 disabled:opacity-50"
                     >
                       {startGoogleAuthMut.isPending ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <ExternalLink className="w-3.5 h-3.5" />}
-                      {form.google_calendar_authorized ? '重新授权' : '授权 Google 日历'}
+                      {googleAuthButtonText}
                     </button>
                   </div>
                 </div>

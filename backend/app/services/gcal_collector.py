@@ -14,7 +14,9 @@ from googleapiclient.discovery import build
 
 logger = logging.getLogger(__name__)
 
-SCOPES = ["https://www.googleapis.com/auth/calendar.readonly"]
+CALENDAR_SCOPES = ["https://www.googleapis.com/auth/calendar.readonly"]
+GMAIL_SCOPES = ["https://www.googleapis.com/auth/gmail.readonly"]
+SCOPES = CALENDAR_SCOPES + GMAIL_SCOPES
 CRED_DIR = Path(os.getenv("SECOND_BRAIN_CREDENTIALS_DIR", Path(__file__).parent.parent.parent / "credentials"))
 CLIENT_SECRET_PATH = CRED_DIR / "google_credentials.json"
 TOKEN_PATH = CRED_DIR / "gcal_token.json"
@@ -39,14 +41,30 @@ def has_google_client_credentials() -> bool:
     return CLIENT_SECRET_PATH.exists()
 
 
-def has_google_authorized_token() -> bool:
+def _token_has_scopes(creds: Credentials, required_scopes: list[str] | None = None) -> bool:
+    scopes = set(required_scopes or SCOPES)
+    granted = set(getattr(creds, "granted_scopes", None) or getattr(creds, "scopes", None) or [])
+    if not granted:
+        return False
+    return scopes.issubset(granted)
+
+
+def has_google_authorized_token(required_scopes: list[str] | None = None) -> bool:
     if not TOKEN_PATH.exists():
         return False
     try:
-        creds = Credentials.from_authorized_user_file(str(TOKEN_PATH), SCOPES)
+        creds = Credentials.from_authorized_user_file(str(TOKEN_PATH))
     except Exception:
         return False
-    return bool(creds and (creds.valid or creds.refresh_token))
+    return bool(creds and (creds.valid or creds.refresh_token) and _token_has_scopes(creds, required_scopes))
+
+
+def has_google_calendar_authorized_token() -> bool:
+    return has_google_authorized_token(CALENDAR_SCOPES)
+
+
+def has_google_gmail_authorized_token() -> bool:
+    return has_google_authorized_token(GMAIL_SCOPES)
 
 
 def save_google_client_credentials(content: bytes) -> dict:
@@ -69,6 +87,7 @@ def save_google_client_credentials(content: bytes) -> dict:
     return {
         "google_credentials_configured": True,
         "google_calendar_authorized": False,
+        "google_gmail_authorized": False,
         "client_id": client_config.get("client_id", ""),
     }
 
@@ -203,15 +222,25 @@ def complete_google_authorization(state: str, code: str) -> dict:
     CRED_DIR.mkdir(parents=True, exist_ok=True)
     TOKEN_PATH.write_text(creds.to_json(), encoding="utf-8")
     logger.info("OAuth2 authorization completed, token saved")
-    return {"google_calendar_authorized": True}
+    return {"google_calendar_authorized": True, "google_gmail_authorized": True}
 
 
-def _get_credentials(allow_interactive: bool = False) -> Credentials:
+def _get_credentials(
+    allow_interactive: bool = False,
+    required_scopes: list[str] | None = None,
+    missing_scope_message: str | None = None,
+) -> Credentials:
     """Get valid OAuth2 credentials."""
     creds = None
 
     if TOKEN_PATH.exists():
-        creds = Credentials.from_authorized_user_file(str(TOKEN_PATH), SCOPES)
+        creds = Credentials.from_authorized_user_file(str(TOKEN_PATH))
+
+    if creds and not _token_has_scopes(creds, required_scopes or SCOPES):
+        raise PermissionError(
+            missing_scope_message
+            or "Google 授权权限不完整，请在配置页重新授权 Google 数据源"
+        )
 
     if creds and creds.valid:
         return creds
@@ -232,7 +261,7 @@ def _get_credentials(allow_interactive: bool = False) -> Credentials:
         )
 
     if not allow_interactive:
-        raise PermissionError("Google Calendar 尚未完成授权，请先在配置页点击“授权 Google 日历”")
+        raise PermissionError("Google 尚未完成授权，请先在配置页点击“授权 Google 数据源”")
 
     flow = InstalledAppFlow.from_client_secrets_file(str(CLIENT_SECRET_PATH), SCOPES)
     creds = flow.run_local_server(port=8090, open_browser=True)
@@ -241,9 +270,17 @@ def _get_credentials(allow_interactive: bool = False) -> Credentials:
     return creds
 
 
-def _build_service():
-    creds = _get_credentials()
-    return build("calendar", "v3", credentials=creds, cache_discovery=False)
+def _build_service(
+    service_name: str = "calendar",
+    version: str = "v3",
+    required_scopes: list[str] | None = None,
+    missing_scope_message: str | None = None,
+):
+    creds = _get_credentials(
+        required_scopes=required_scopes,
+        missing_scope_message=missing_scope_message,
+    )
+    return build(service_name, version, credentials=creds, cache_discovery=False)
 
 
 def _parse_event_time(event_time: dict) -> datetime | None:
@@ -310,7 +347,10 @@ def _format_event_content(event: dict) -> str:
 
 def collect_gcal_events(user_email: str, days: int = 2) -> dict:
     """Collect Google Calendar events for the past N days via OAuth2."""
-    service = _build_service()
+    service = _build_service(
+        required_scopes=CALENDAR_SCOPES,
+        missing_scope_message="Google Calendar 尚未完成授权，请先在配置页点击“授权 Google 数据源”",
+    )
 
     local_now = datetime.now().astimezone()
     local_tz = local_now.tzinfo or timezone.utc

@@ -1,6 +1,6 @@
 export interface ActivityEvent {
   id: string
-  source: 'browser' | 'chrome' | 'safari' | 'manual' | 'gcal' | 'git'
+  source: 'browser' | 'chrome' | 'safari' | 'manual' | 'gcal' | 'gmail' | 'git'
   timestamp: string
   title: string
   content?: string
@@ -22,20 +22,28 @@ export interface EventsResponse {
 export interface IngestResponse {
   imported_count: number
   skipped_count?: number
+  updated_count?: number
   date_range?: string[]
   collected_sources?: string[]
   source_breakdown?: Record<string, number>
   warnings?: string[]
+  candidate_count?: number
+  captured_count?: number
+  offset?: number
+  batch_size?: number
+  next_offset?: number
+  has_more?: boolean
 }
 
 export type CollectSourceStatus = 'success' | 'disabled' | 'misconfigured' | 'failed'
 
 export interface CollectSourceResult {
-  source: 'chrome' | 'safari' | 'gcal' | 'git'
+  source: 'chrome' | 'safari' | 'gcal' | 'gmail' | 'git'
   label: string
   status: CollectSourceStatus
   imported_count: number
   skipped_count: number
+  updated_count?: number
   date_range: string[]
   message?: string | null
   warnings?: string[]
@@ -152,11 +160,13 @@ export interface AppSettings {
   chrome_history_enabled: boolean
   safari_history_enabled: boolean
   google_calendar_enabled: boolean
+  gmail_enabled: boolean
   git_activity_enabled: boolean
   git_repo_paths: string
   git_author_filter: string
   google_credentials_configured: boolean
   google_calendar_authorized: boolean
+  google_gmail_authorized: boolean
   openai_api_key_configured: boolean
   deepseek_api_key_configured: boolean
   nvidia_api_key_configured: boolean
@@ -181,6 +191,7 @@ export interface SettingsUpdatePayload {
   chrome_history_enabled?: boolean
   safari_history_enabled?: boolean
   google_calendar_enabled?: boolean
+  gmail_enabled?: boolean
   git_activity_enabled?: boolean
   git_repo_paths?: string
   git_author_filter?: string

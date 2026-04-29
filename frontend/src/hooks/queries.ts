@@ -1,5 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import * as api from '../api/client'
+import type { ChromeDevtoolsHistoryOptions } from '../api/client'
 import type { ManualEntry, PlanItem, AppSettings, SettingsUpdatePayload } from '../types'
 
 export const useEvents = (date: string, source?: string, options?: { aggregateBrowser?: boolean }) =>
@@ -60,9 +61,30 @@ export const useIngestBrowserLocal = () => {
   return useMutation({ mutationFn: (days?: number) => api.ingestBrowserLocal(days), onSuccess: () => qc.invalidateQueries({ queryKey: ['events'] }) })
 }
 
+export const useIngestChromeDevtools = () => {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (days?: number) => api.ingestChromeDevtools(days),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['events'] }),
+  })
+}
+
+export const useIngestChromeDevtoolsHistory = () => {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (options?: ChromeDevtoolsHistoryOptions) => api.ingestChromeDevtoolsHistory(options),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['events'] }),
+  })
+}
+
 export const useIngestGCal = () => {
   const qc = useQueryClient()
   return useMutation({ mutationFn: (days?: number) => api.ingestGCal(days), onSuccess: () => qc.invalidateQueries({ queryKey: ['events'] }) })
+}
+
+export const useIngestGmail = () => {
+  const qc = useQueryClient()
+  return useMutation({ mutationFn: (days?: number) => api.ingestGmail(days), onSuccess: () => qc.invalidateQueries({ queryKey: ['events'] }) })
 }
 
 export const useIngestGit = () => {

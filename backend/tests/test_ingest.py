@@ -7,6 +7,7 @@ import pytest
 from conftest import SAMPLE_MANUAL_ENTRIES, SAMPLE_CHROME_HISTORY
 from app.models.event import Event
 from app.models.analysis import Analysis
+from app.services.chrome_devtools_collector import ChromeDevtoolsUnavailable
 from app.services.ingest_service import get_events_by_date
 
 
@@ -107,6 +108,160 @@ class TestChromeIngest:
         assert captured["days"] == 2
         assert resp.json()["collected_sources"] == ["chrome"]
 
+    async def test_chrome_devtools_ingests_rendered_tabs(self, client, monkeypatch):
+        captured = {}
+
+        def fake_collect_chrome_rendered_tabs(host, port, days):
+            captured["host"] = host
+            captured["port"] = port
+            captured["days"] = days
+            return {
+                "events": [
+                    {
+                        "source": "chrome",
+                        "visit_time": "2026-04-28T10:15:00+08:00",
+                        "title": "内网项目页",
+                        "url": "https://corp.example.com/project/MB-123",
+                        "content": "主内容：需求评审、上线计划、风险项",
+                        "capture_method": "chrome_devtools",
+                    }
+                ],
+                "date_range": ["2026-04-28", "2026-04-28"],
+                "collected_sources": ["chrome"],
+                "source_breakdown": {"chrome": 1},
+                "warnings": [],
+            }
+
+        monkeypatch.setattr("app.routers.ingest.collect_chrome_rendered_tabs", fake_collect_chrome_rendered_tabs)
+
+        resp = await client.post("/api/ingest/chrome-devtools", json={})
+
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["imported_count"] == 1
+        assert captured == {"host": "127.0.0.1", "port": 9222, "days": 2}
+
+        events_resp = await client.get("/api/events", params={"date": "2026-04-28", "source": "chrome"})
+        items = events_resp.json()["items"]
+        assert items[0]["title"] == "内网项目页"
+        assert "上线计划" in items[0]["content"]
+
+    async def test_chrome_devtools_returns_bad_request_when_unavailable(self, client, monkeypatch):
+        def fake_collect_chrome_rendered_tabs(_host, _port, _days):
+            raise ChromeDevtoolsUnavailable("无法连接 Chrome DevTools")
+
+        monkeypatch.setattr("app.routers.ingest.collect_chrome_rendered_tabs", fake_collect_chrome_rendered_tabs)
+
+        resp = await client.post("/api/ingest/chrome-devtools", json={})
+
+        assert resp.status_code == 400
+        assert "DevTools" in resp.json()["detail"]
+
+    async def test_chrome_devtools_history_ingests_rendered_history_pages(self, client, monkeypatch):
+        captured = {}
+
+        def fake_collect_chrome_mcp_history_rendered_pages(days, max_pages, offset, domains, intranet_only):
+            captured.update({
+                "days": days,
+                "max_pages": max_pages,
+                "offset": offset,
+                "domains": domains,
+                "intranet_only": intranet_only,
+            })
+            return {
+                "events": [
+                    {
+                        "source": "chrome",
+                        "visit_time": "2026-04-28T10:15:00",
+                        "title": "SWP Kafka Approval",
+                        "url": "https://space.shopee.io/utility/swp/detail/9280780",
+                        "content": "页面字段：Project: chatbot_data | Topic name: fact_queue",
+                        "capture_method": "chrome_devtools_history",
+                    }
+                ],
+                "date_range": ["2026-04-28", "2026-04-28"],
+                "collected_sources": ["chrome"],
+                "source_breakdown": {"chrome": 1},
+                "warnings": [],
+                "candidate_count": 3,
+                "captured_count": 1,
+                "offset": offset,
+                "batch_size": max_pages,
+                "next_offset": offset + 3,
+                "has_more": False,
+            }
+
+        monkeypatch.setattr(
+            "app.routers.ingest.collect_chrome_mcp_history_rendered_pages",
+            fake_collect_chrome_mcp_history_rendered_pages,
+        )
+
+        resp = await client.post("/api/ingest/chrome-devtools-history", json={"max_pages": 25})
+
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["imported_count"] == 1
+        assert data["candidate_count"] == 3
+        assert data["captured_count"] == 1
+        assert data["next_offset"] == 3
+        assert data["has_more"] is False
+        assert captured == {
+            "days": 2,
+            "max_pages": 25,
+            "offset": 0,
+            "domains": None,
+            "intranet_only": True,
+        }
+
+    async def test_chrome_devtools_history_updates_existing_browser_content(self, client, monkeypatch):
+        seed = [
+            {
+                "visit_time": "2026-04-28T10:15:00",
+                "title": "Old title",
+                "url": "https://space.shopee.io/utility/swp/detail/9280780",
+                "content": "页面线索：space.shopee.io",
+            }
+        ]
+        await client.post(
+            "/api/ingest/chrome",
+            files={"file": ("history.json", io.BytesIO(json.dumps(seed).encode()), "application/json")},
+        )
+
+        def fake_collect_chrome_mcp_history_rendered_pages(*_args, **_kwargs):
+            return {
+                "events": [
+                    {
+                        "source": "chrome",
+                        "visit_time": "2026-04-28T10:15:00",
+                        "title": "Rendered SWP Detail",
+                        "url": "https://space.shopee.io/utility/swp/detail/9280780",
+                        "content": "页面字段：Project: chatbot_data | Topic name: fact_queue | Kafka SRE Approval",
+                        "capture_method": "chrome_devtools_history",
+                    }
+                ],
+                "date_range": ["2026-04-28", "2026-04-28"],
+                "collected_sources": ["chrome"],
+                "source_breakdown": {"chrome": 1},
+                "warnings": [],
+                "candidate_count": 1,
+                "captured_count": 1,
+            }
+
+        monkeypatch.setattr(
+            "app.routers.ingest.collect_chrome_mcp_history_rendered_pages",
+            fake_collect_chrome_mcp_history_rendered_pages,
+        )
+
+        resp = await client.post("/api/ingest/chrome-devtools-history", json={})
+
+        assert resp.status_code == 200
+        assert resp.json()["imported_count"] == 0
+        assert resp.json()["updated_count"] == 1
+        events_resp = await client.get("/api/events", params={"date": "2026-04-28", "source": "chrome"})
+        item = events_resp.json()["items"][0]
+        assert item["title"] == "Rendered SWP Detail"
+        assert "Kafka SRE Approval" in item["content"]
+
 
 class TestGCalIngest:
     async def test_gcal_defaults_to_two_days(self, client, monkeypatch):
@@ -171,7 +326,7 @@ class TestGCalIngest:
         monkeypatch.setattr("app.routers.ingest.collect_chrome_history", fake_collect_chrome_history)
         monkeypatch.setattr("app.routers.ingest.collect_gcal_events", fake_collect_gcal_events)
         monkeypatch.setattr("app.routers.ingest.has_google_client_credentials", lambda: True)
-        monkeypatch.setattr("app.routers.ingest.has_google_authorized_token", lambda: True)
+        monkeypatch.setattr("app.routers.ingest.has_google_calendar_authorized_token", lambda: True)
 
         resp = await client.post("/api/ingest/collect", json={})
 
@@ -246,7 +401,7 @@ class TestGCalIngest:
 
         monkeypatch.setattr("app.routers.settings._get_all_settings", fake_get_all_settings)
         monkeypatch.setattr("app.routers.ingest.has_google_client_credentials", lambda: True)
-        monkeypatch.setattr("app.routers.ingest.has_google_authorized_token", lambda: False)
+        monkeypatch.setattr("app.routers.ingest.has_google_calendar_authorized_token", lambda: False)
 
         resp = await client.post("/api/ingest/collect", json={})
 
@@ -364,6 +519,97 @@ class TestGCalIngest:
         git_result = next(item for item in data["source_results"] if item["source"] == "git")
         assert git_result["status"] == "misconfigured"
         assert "Git 仓库或工作区路径" in git_result["message"]
+
+    async def test_gmail_defaults_to_two_days(self, client, monkeypatch):
+        captured = {}
+
+        async def fake_get_all_settings(_db):
+            return {"google_user_email": "tester@example.com"}
+
+        def fake_collect_gmail_messages(user_email, days, max_messages):
+            assert user_email == "tester@example.com"
+            captured["days"] = days
+            captured["max_messages"] = max_messages
+            return {"events": [], "date_range": []}
+
+        monkeypatch.setattr("app.routers.settings._get_all_settings", fake_get_all_settings)
+        monkeypatch.setattr("app.routers.ingest.collect_gmail_messages", fake_collect_gmail_messages)
+
+        resp = await client.post("/api/ingest/gmail", json={})
+
+        assert resp.status_code == 200
+        assert resp.json() == {"imported_count": 0, "skipped_count": 0, "date_range": []}
+        assert captured["days"] == 2
+        assert captured["max_messages"] == 100
+
+    async def test_collect_configured_sources_supports_gmail_only(self, client, monkeypatch):
+        async def fake_get_all_settings(_db):
+            return {
+                "chrome_history_enabled": False,
+                "safari_history_enabled": False,
+                "google_calendar_enabled": False,
+                "gmail_enabled": True,
+                "git_activity_enabled": False,
+                "google_user_email": "tester@example.com",
+            }
+
+        def fake_collect_gmail_messages(user_email, days, max_messages):
+            assert user_email == "tester@example.com"
+            assert days == 2
+            assert max_messages == 100
+            return {
+                "events": [
+                    {
+                        "source": "gmail",
+                        "timestamp": "2026-04-03T13:15:00",
+                        "title": "Kafka approval",
+                        "content": "发件人: alice@example.com\n正文:\nPlease review the Kafka request",
+                        "url": "https://mail.google.com/mail/u/tester@example.com/#all/msg-1",
+                        "message_id": "msg-1",
+                    }
+                ],
+                "date_range": ["2026-04-03", "2026-04-03"],
+            }
+
+        monkeypatch.setattr("app.routers.settings._get_all_settings", fake_get_all_settings)
+        monkeypatch.setattr("app.routers.ingest.has_google_client_credentials", lambda: True)
+        monkeypatch.setattr("app.routers.ingest.has_google_gmail_authorized_token", lambda: True)
+        monkeypatch.setattr("app.routers.ingest.collect_gmail_messages", fake_collect_gmail_messages)
+
+        resp = await client.post("/api/ingest/collect", json={})
+
+        assert resp.status_code == 200
+        data = resp.json()
+        gmail_result = next(item for item in data["source_results"] if item["source"] == "gmail")
+        assert gmail_result["status"] == "success"
+        assert gmail_result["imported_count"] == 1
+
+        events_resp = await client.get("/api/events", params={"date": "2026-04-03", "source": "gmail"})
+        assert events_resp.status_code == 200
+        assert events_resp.json()["items"][0]["source"] == "gmail"
+
+    async def test_collect_configured_sources_marks_misconfigured_gmail_without_authorization(self, client, monkeypatch):
+        async def fake_get_all_settings(_db):
+            return {
+                "chrome_history_enabled": False,
+                "safari_history_enabled": False,
+                "google_calendar_enabled": False,
+                "gmail_enabled": True,
+                "git_activity_enabled": False,
+                "google_user_email": "tester@example.com",
+            }
+
+        monkeypatch.setattr("app.routers.settings._get_all_settings", fake_get_all_settings)
+        monkeypatch.setattr("app.routers.ingest.has_google_client_credentials", lambda: True)
+        monkeypatch.setattr("app.routers.ingest.has_google_gmail_authorized_token", lambda: False)
+
+        resp = await client.post("/api/ingest/collect", json={})
+
+        assert resp.status_code == 200
+        data = resp.json()
+        gmail_result = next(item for item in data["source_results"] if item["source"] == "gmail")
+        assert gmail_result["status"] == "misconfigured"
+        assert "授权" in gmail_result["message"]
 
 
 class TestEventQuery:

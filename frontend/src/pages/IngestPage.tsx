@@ -2,13 +2,26 @@ import { useState, type ReactNode } from 'react'
 import { Link } from 'react-router-dom'
 import { PenLine, Clock, Loader2, Plus, Trash2, X, Sparkles } from 'lucide-react'
 import toast from 'react-hot-toast'
-import { useCollectConfiguredSources, useIngestManual, useEvents, useSettings } from '../hooks/queries'
+import { useCollectConfiguredSources, useIngestChromeDevtoolsHistory, useIngestManual, useEvents, useSettings } from '../hooks/queries'
 import type { ActivityEvent, CollectSourceResult, ManualEntry } from '../types'
 import { getTodayDateInputValue } from '../utils/date'
+
+const MCP_BATCH_SIZE = 10
+const MCP_MAX_PAGES = 80
 
 const CATEGORY_COLORS: Record<string, string> = {
   work: 'bg-blue-100 text-blue-700', study: 'bg-violet-100 text-violet-700',
   life: 'bg-emerald-100 text-emerald-700', entertainment: 'bg-amber-100 text-amber-700',
+}
+
+type McpProgress = {
+  status: 'idle' | 'running' | 'done' | 'failed'
+  batch: number
+  imported: number
+  updated: number
+  skipped: number
+  captured: number
+  message?: string
 }
 
 const SOURCE_LABELS: Record<string, string> = {
@@ -16,6 +29,7 @@ const SOURCE_LABELS: Record<string, string> = {
   chrome: 'Chrome',
   safari: 'Safari',
   gcal: '日历',
+  gmail: 'Gmail',
   git: 'Git',
   manual: '手动',
 }
@@ -52,11 +66,22 @@ export default function IngestPage() {
   const [isManualOpen, setIsManualOpen] = useState(false)
   const [entries, setEntries] = useState<ManualEntry[]>([])
   const [form, setForm] = useState<ManualEntry>({ timestamp: '', title: '', content: '', duration_minutes: 30 })
+  const [mcpProgress, setMcpProgress] = useState<McpProgress>({
+    status: 'idle',
+    batch: 0,
+    imported: 0,
+    updated: 0,
+    skipped: 0,
+    captured: 0,
+  })
 
   const { data: eventsData, isLoading: eventsLoading } = useEvents(date, source || undefined)
   const { data: settings, isLoading: settingsLoading } = useSettings()
   const collectMut = useCollectConfiguredSources()
+  const chromeDevtoolsHistoryMut = useIngestChromeDevtoolsHistory()
   const manualMut = useIngestManual()
+  const isMcpCollecting = mcpProgress.status === 'running'
+  const isCollecting = collectMut.isPending || isMcpCollecting
 
   const sourceConfigs = [
     {
@@ -95,6 +120,19 @@ export default function IngestPage() {
       enabled: settings?.google_calendar_enabled ?? false,
       ready: !!settings?.google_calendar_enabled && !!settings?.google_user_email && !!settings?.google_credentials_configured && !!settings?.google_calendar_authorized,
     },
+    {
+      key: 'gmail',
+      label: 'Gmail',
+      description: settings?.google_user_email && settings?.google_credentials_configured
+        ? settings.google_gmail_authorized
+          ? `读取 ${settings.google_user_email} 最近 2 天的邮件。`
+          : '需要先在配置页完成 Google 数据源授权。'
+        : settings?.google_user_email
+          ? '需要先在配置页上传 Google OAuth JSON。'
+          : '需要先在配置页填写 Google 邮箱地址并上传凭据。',
+      enabled: settings?.gmail_enabled ?? false,
+      ready: !!settings?.gmail_enabled && !!settings?.google_user_email && !!settings?.google_credentials_configured && !!settings?.google_gmail_authorized,
+    },
   ] as const
 
   const hasEnabledSource = sourceConfigs.some(item => item.enabled)
@@ -107,8 +145,19 @@ export default function IngestPage() {
         ? '已启用的数据源还未完成配置'
         : null
 
-  const handleCollect = () => collectMut.mutate(2, {
-    onSuccess: data => {
+  const handleCollect = async () => {
+    setMcpProgress({
+      status: 'idle',
+      batch: 0,
+      imported: 0,
+      updated: 0,
+      skipped: 0,
+      captured: 0,
+    })
+
+    let mcpStarted = false
+    try {
+      const data = await collectMut.mutateAsync(2)
       if (data.imported_count > 0) {
         const importedSummary = data.source_results
           .filter(result => result.imported_count > 0)
@@ -126,9 +175,77 @@ export default function IngestPage() {
       if (data.imported_count > 0 && data.warnings?.length) {
         toast(data.warnings[0])
       }
-    },
-    onError: (e: any) => toast.error(e?.response?.data?.detail ?? '采集失败，请检查数据源配置'),
-  })
+
+      if (settings?.chrome_history_enabled) {
+        mcpStarted = true
+        let offset = 0
+        let batch = 0
+        let imported = 0
+        let updated = 0
+        let skipped = 0
+        let captured = 0
+        let hasMore = true
+
+        setMcpProgress({
+          status: 'running',
+          batch,
+          imported,
+          updated,
+          skipped,
+          captured,
+          message: 'Chrome MCP 内网明细开始分批采集，普通数据已先刷新。',
+        })
+
+        while (hasMore && offset < MCP_MAX_PAGES) {
+          const currentBatchSize = Math.min(MCP_BATCH_SIZE, MCP_MAX_PAGES - offset)
+          const batchData = await chromeDevtoolsHistoryMut.mutateAsync({
+            days: 2,
+            maxPages: currentBatchSize,
+            offset,
+          })
+
+          batch += 1
+          imported += batchData.imported_count ?? 0
+          updated += batchData.updated_count ?? 0
+          skipped += batchData.skipped_count ?? 0
+          captured += batchData.captured_count ?? 0
+          if (batchData.date_range?.length) setDate(batchData.date_range[batchData.date_range.length - 1])
+
+          const nextOffset = batchData.next_offset ?? offset + currentBatchSize
+          hasMore = !!batchData.has_more && nextOffset > offset && nextOffset < MCP_MAX_PAGES
+          offset = nextOffset
+
+          setMcpProgress({
+            status: hasMore ? 'running' : 'done',
+            batch,
+            imported,
+            updated,
+            skipped,
+            captured,
+            message: hasMore
+              ? `已完成 ${batch} 批，正在继续读取后续内网页面。`
+              : `内网明细采集完成，共处理 ${captured} 个页面。`,
+          })
+        }
+
+        const changed = imported + updated
+        if (changed > 0) {
+          toast.success(`内网明细已补充：新增 ${imported} 条，更新 ${updated} 条`)
+        } else if (captured > 0) {
+          toast('内网明细已检查，没有新的内容需要写入')
+        }
+      }
+    } catch (e: any) {
+      if (mcpStarted) {
+        setMcpProgress(current => ({
+          ...current,
+          status: 'failed',
+          message: e?.response?.data?.detail ?? 'Chrome MCP 内网明细采集失败，可稍后重试。',
+        }))
+      }
+      toast.error(e?.response?.data?.detail ?? '采集失败，请检查数据源配置')
+    }
+  }
 
   const addEntry = () => {
     if (!form.timestamp || !form.title) { toast.error('请填写时间和标题'); return }
@@ -176,6 +293,7 @@ export default function IngestPage() {
               <p className="text-sm font-medium text-gray-800">一键采集数据</p>
             </div>
             <p className="text-sm text-gray-500 mt-1">会采集最近 2 天的已启用数据源，并自动刷新下方事件列表。</p>
+            <p className="text-xs text-gray-500 mt-2">Chrome 内网页面会在普通采集完成后分批补充，每批完成后先刷新已采集到的数据。</p>
             <div className="flex flex-wrap gap-2 mt-3">
               {sourceConfigs.map(item => {
                 const statusText = !item.enabled ? '已关闭' : item.ready ? '已启用' : '待配置'
@@ -203,17 +321,41 @@ export default function IngestPage() {
             </Link>
             <button
               onClick={handleCollect}
-              disabled={collectMut.isPending || !!collectDisabledReason}
+              disabled={isCollecting || !!collectDisabledReason}
               className="px-4 py-2 bg-blue-600 text-white text-sm rounded-xl hover:bg-blue-700 disabled:opacity-50 flex items-center justify-center gap-2"
             >
-              {collectMut.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Sparkles className="w-4 h-4" />}
-              {collectMut.isPending ? '采集中...' : '一键采集数据'}
+              {isCollecting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Sparkles className="w-4 h-4" />}
+              {isMcpCollecting ? '补充内网明细...' : collectMut.isPending ? '采集中...' : '一键采集数据'}
             </button>
           </div>
         </div>
 
         {collectDisabledReason && (
           <p className="text-xs text-amber-600 mt-3">{collectDisabledReason}</p>
+        )}
+
+        {mcpProgress.status !== 'idle' && (
+          <div className={`mt-4 rounded-xl border px-3 py-3 ${
+            mcpProgress.status === 'failed'
+              ? 'border-red-200 bg-red-50/70'
+              : mcpProgress.status === 'done'
+                ? 'border-emerald-200 bg-emerald-50/70'
+                : 'border-blue-200 bg-blue-50/70'
+          }`}>
+            <div className="flex items-center justify-between gap-3">
+              <p className="text-sm font-medium text-gray-800">Chrome 内网明细</p>
+              <span className="text-xs text-gray-500">
+                {mcpProgress.status === 'running' ? `第 ${mcpProgress.batch + 1} 批进行中` : mcpProgress.status === 'done' ? '已完成' : '采集失败'}
+              </span>
+            </div>
+            <p className="text-xs text-gray-500 mt-1">{mcpProgress.message}</p>
+            <div className="flex flex-wrap gap-2 mt-2 text-xs text-gray-500">
+              <span>已抓取 {mcpProgress.captured} 页</span>
+              <span>新增 {mcpProgress.imported} 条</span>
+              <span>更新 {mcpProgress.updated} 条</span>
+              <span>跳过 {mcpProgress.skipped} 条</span>
+            </div>
+          </div>
         )}
 
         {collectMut.data?.source_results?.length ? (
@@ -241,6 +383,7 @@ export default function IngestPage() {
             {[
               { value: '', label: '全部' },
               { value: 'gcal', label: '日历' },
+              { value: 'gmail', label: 'Gmail' },
               { value: 'git', label: 'Git' },
               { value: 'browser', label: '浏览器' },
               { value: 'manual', label: '手动' },

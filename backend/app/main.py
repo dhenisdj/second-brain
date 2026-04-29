@@ -109,7 +109,7 @@ def _is_google_oauth_callback(request: Request) -> bool:
 def _render_google_oauth_callback(request: Request) -> HTMLResponse:
     if request.query_params.get("error"):
         return HTMLResponse(
-            "<html><body><h2>Google 日历授权失败</h2><p>请回到 Second Brain 配置页重新授权。</p></body></html>",
+            "<html><body><h2>Google 数据源授权失败</h2><p>请回到 Second Brain 配置页重新授权。</p></body></html>",
             status_code=400,
         )
 
@@ -117,7 +117,7 @@ def _render_google_oauth_callback(request: Request) -> HTMLResponse:
     code = request.query_params.get("code", "")
     if not code:
         return HTMLResponse(
-            "<html><body><h2>Google 日历授权失败</h2><p>回调缺少授权码。</p></body></html>",
+            "<html><body><h2>Google 数据源授权失败</h2><p>回调缺少授权码。</p></body></html>",
             status_code=400,
         )
 
@@ -127,17 +127,17 @@ def _render_google_oauth_callback(request: Request) -> HTMLResponse:
         complete_google_authorization(state, code)
     except ValueError as exc:
         return HTMLResponse(
-            f"<html><body><h2>Google 日历授权失败</h2><p>{exc}</p></body></html>",
+            f"<html><body><h2>Google 数据源授权失败</h2><p>{exc}</p></body></html>",
             status_code=400,
         )
     except Exception:
         return HTMLResponse(
-            "<html><body><h2>Google 日历授权失败</h2><p>保存授权 token 时出现错误，请回到配置页重试。</p></body></html>",
+            "<html><body><h2>Google 数据源授权失败</h2><p>保存授权 token 时出现错误，请回到配置页重试。</p></body></html>",
             status_code=500,
         )
 
     return HTMLResponse(
-        "<html><body><h2>Google 日历授权完成</h2><p>可以回到 Second Brain 继续采集。</p></body></html>"
+        "<html><body><h2>Google 数据源授权完成</h2><p>可以回到 Second Brain 继续采集。</p></body></html>"
     )
 
 

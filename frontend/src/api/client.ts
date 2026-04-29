@@ -11,6 +11,22 @@ const api = axios.create({ baseURL: '/api' })
 export const ingestBrowserLocal = (days = 2) =>
   api.post<IngestResponse>('/ingest/browser-local', { days }).then(r => r.data)
 
+export const ingestChromeDevtools = (days = 2) =>
+  api.post<IngestResponse>('/ingest/chrome-devtools', { days }).then(r => r.data)
+
+export interface ChromeDevtoolsHistoryOptions {
+  days?: number
+  maxPages?: number
+  offset?: number
+}
+
+export const ingestChromeDevtoolsHistory = (options: ChromeDevtoolsHistoryOptions = {}) =>
+  api.post<IngestResponse>('/ingest/chrome-devtools-history', {
+    days: options.days ?? 2,
+    max_pages: options.maxPages ?? 10,
+    offset: options.offset ?? 0,
+  }).then(r => r.data)
+
 export const ingestChrome = (file: File) => {
   const form = new FormData()
   form.append('file', file)
@@ -19,6 +35,9 @@ export const ingestChrome = (file: File) => {
 
 export const ingestGCal = (days = 2) =>
   api.post<IngestResponse>('/ingest/gcal', { days }).then(r => r.data)
+
+export const ingestGmail = (days = 2) =>
+  api.post<IngestResponse>('/ingest/gmail', { days }).then(r => r.data)
 
 export const ingestGit = (days = 2) =>
   api.post<IngestResponse>('/ingest/git', { days }).then(r => r.data)
@@ -115,7 +134,12 @@ export const updateSettings = (settings: SettingsUpdatePayload) =>
 export const uploadGoogleCredentials = (file: File) => {
   const form = new FormData()
   form.append('file', file)
-  return api.post<{ google_credentials_configured: boolean; client_id: string }>('/settings/google-credentials', form).then(r => r.data)
+  return api.post<{
+    google_credentials_configured: boolean
+    google_calendar_authorized: boolean
+    google_gmail_authorized: boolean
+    client_id: string
+  }>('/settings/google-credentials', form).then(r => r.data)
 }
 
 export const startGoogleCalendarAuthorization = () =>

@@ -10,6 +10,7 @@ const SOURCE_LABELS: Record<ActivityEvent['source'], string> = {
   chrome: 'Chrome',
   safari: 'Safari',
   gcal: '日历',
+  gmail: 'Gmail',
   git: 'Git',
   manual: '手动',
 }

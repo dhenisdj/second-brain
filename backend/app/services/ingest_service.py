@@ -33,6 +33,7 @@ async def _ingest_browser_records(db: AsyncSession, records: list[dict], default
 
     count = 0
     skipped = 0
+    updated = 0
     dates = []
     seen_keys: set[tuple[str, str, str | None, str]] = set()
     for rec in records:
@@ -47,16 +48,30 @@ async def _ingest_browser_records(db: AsyncSession, records: list[dict], default
             continue
         seen_keys.add(dedup_key)
 
+        existing_filters = [
+            Event.source == source,
+            Event.timestamp == ts,
+        ]
+        if url:
+            existing_filters.append(Event.url == url)
+        else:
+            existing_filters.append(Event.title == title)
         existing = await db.execute(
-            select(Event.id).where(
-                Event.source == source,
-                Event.timestamp == ts,
-                Event.url == url,
-                Event.title == title,
-            )
+            select(Event).where(*existing_filters)
         )
-        if existing.scalar_one_or_none():
+        existing_event = existing.scalar_one_or_none()
+        if existing_event:
             skipped += 1
+            new_content = rec.get("content")
+            current_content = existing_event.content or ""
+            if new_content and len(new_content) > len(current_content):
+                existing_event.title = title or existing_event.title
+                existing_event.content = new_content
+                if rec.get("visit_duration_seconds") and not existing_event.duration_minutes:
+                    existing_event.duration_minutes = max(1, rec["visit_duration_seconds"] // 60)
+                existing_event.raw_data = json.dumps({**rec, "source": source}, ensure_ascii=False)
+                dates.append(ts.date().isoformat())
+                updated += 1
             continue
 
         duration_sec = rec.get("visit_duration_seconds")
@@ -78,6 +93,7 @@ async def _ingest_browser_records(db: AsyncSession, records: list[dict], default
     return {
         "imported_count": count,
         "skipped_count": skipped,
+        "updated_count": updated,
         "date_range": [unique_dates[0], unique_dates[-1]] if unique_dates else [],
     }
 
@@ -125,6 +141,56 @@ async def ingest_gcal(db: AsyncSession, events: list[dict]) -> int:
         count += 1
     await db.commit()
     return count
+
+
+async def ingest_gmail(db: AsyncSession, events: list[dict]) -> dict:
+    count = 0
+    skipped = 0
+    dates = []
+    for ev in events:
+        ts = datetime.fromisoformat(ev["timestamp"])
+        url = ev.get("url")
+        raw_data = json.dumps(ev, ensure_ascii=False)
+
+        filters = [Event.source == "gmail"]
+        if url:
+            filters.append(Event.url == url)
+        else:
+            filters.extend([
+                Event.timestamp == ts,
+                Event.title == ev["title"],
+            ])
+
+        existing = await db.execute(select(Event).where(*filters))
+        existing_event = existing.scalar_one_or_none()
+        if existing_event:
+            existing_event.timestamp = ts
+            existing_event.title = ev["title"]
+            existing_event.content = ev.get("content")
+            existing_event.url = url
+            existing_event.raw_data = raw_data
+            skipped += 1
+            continue
+
+        event = Event(
+            source="gmail",
+            timestamp=ts,
+            title=ev["title"],
+            content=ev.get("content"),
+            url=url,
+            raw_data=raw_data,
+        )
+        db.add(event)
+        dates.append(ts.date().isoformat())
+        count += 1
+    await db.commit()
+
+    unique_dates = sorted(set(dates))
+    return {
+        "imported_count": count,
+        "skipped_count": skipped,
+        "date_range": [unique_dates[0], unique_dates[-1]] if unique_dates else [],
+    }
 
 
 async def ingest_git(db: AsyncSession, events: list[dict]) -> dict:
