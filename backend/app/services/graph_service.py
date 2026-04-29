@@ -9,6 +9,8 @@ from app.models.knowledge import KGNode, KGEdge, KGEvidence
 from app.models.event import Event
 from app.models.summary import DailySummary
 from app.services.analysis_lookup import get_latest_analyses_by_event_ids
+from app.services.entity_normalizer import merge_properties, normalize_graph_data
+from app.services import graphiti_service
 from app.services.llm_service import get_llm_service
 from app.prompts.summary import build_graph_extraction_prompt
 
@@ -261,11 +263,23 @@ async def extract_and_merge_graph(
     events_data: list[dict] | None = None,
 ):
     """Extract entities and relationships from summary, merge into graph."""
+    await graphiti_service.publish_summary_episode(
+        summary_data,
+        target_date,
+        summary_id=summary_id,
+        events_data=events_data,
+    )
+
     llm = get_llm_service()
     prompt = build_graph_extraction_prompt(summary_data)
 
     try:
-        graph_data = await llm.complete_json(prompt)
+        raw_graph_data = await llm.complete_json(prompt)
+        existing_nodes = [
+            {"name": node.name, "type": node.type, "properties": node.properties}
+            for node in (await db.execute(select(KGNode))).scalars().all()
+        ]
+        graph_data = normalize_graph_data(raw_graph_data, existing_nodes=existing_nodes)
     except Exception:
         logger.exception(
             "Graph extraction failed for summary %s on %s",
@@ -308,6 +322,11 @@ async def extract_and_merge_graph(
         if node:
             node.last_seen = target_date
             node.mention_count += 1
+            node.type = node_data.get("type", node.type)
+            node.properties = json.dumps(
+                merge_properties(node.properties, node_data.get("properties", {})),
+                ensure_ascii=False,
+            )
         else:
             node = KGNode(
                 name=name,

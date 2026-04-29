@@ -1,4 +1,5 @@
 from contextlib import asynccontextmanager
+import logging
 import os
 from pathlib import Path
 
@@ -10,6 +11,8 @@ from fastapi.staticfiles import StaticFiles
 from app.database import init_db
 from app.routers import ingest, analysis, summary, knowledge, plan, settings, data_manage, jobs
 from app.services.job_executor import resume_incomplete_jobs, shutdown_job_executor
+
+logger = logging.getLogger(__name__)
 
 
 def _serve_frontend_enabled() -> bool:
@@ -131,6 +134,7 @@ def _render_google_oauth_callback(request: Request) -> HTMLResponse:
             status_code=400,
         )
     except Exception:
+        logger.exception("Google OAuth callback failed while saving token")
         return HTMLResponse(
             "<html><body><h2>Google 数据源授权失败</h2><p>保存授权 token 时出现错误，请回到配置页重试。</p></body></html>",
             status_code=500,

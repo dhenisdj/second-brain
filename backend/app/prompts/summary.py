@@ -39,6 +39,12 @@ Summary:
 Identify entities of types: project, person, concept, tool, topic
 Identify relationships: uses, belongs_to, related_to, learned
 
+Entity normalization rules:
+- Do not create separate person nodes for pronouns or generic self references.
+- If the summary refers to the current user as "我", "本人", "用户", "User", or "current user", use exactly one person node named "我".
+- Generic roles such as "员工", "同事", "成员", "申请人", "审批人", or "管理员" are not specific people. Use topic/concept only when the role itself is important.
+- Use stable product/project/tool names. Keep capitalization for real names, but do not create duplicate aliases for the same entity.
+
 Return JSON:
 {{
   "nodes": [

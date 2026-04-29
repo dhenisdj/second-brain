@@ -6,9 +6,9 @@ export default function Layout() {
   return (
     <div className="flex h-screen overflow-hidden bg-gray-50">
       <Sidebar />
-      <main className="relative flex-1 overflow-y-auto">
+      <main className="relative min-w-0 flex-1 overflow-x-hidden overflow-y-auto">
         <RecentJobsPanel />
-        <div className="max-w-7xl mx-auto px-6 py-6 pb-24">
+        <div className="mx-auto w-full max-w-7xl px-4 py-6 pb-24 sm:px-6">
           <Outlet />
         </div>
       </main>

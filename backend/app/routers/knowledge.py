@@ -3,6 +3,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
 from app.services import graph_service
+from app.services import graphiti_service
 from app.services import job_service
 from app.services.job_executor import schedule_job
 
@@ -41,3 +42,17 @@ async def rebuild_graph_async(db: AsyncSession = Depends(get_db)):
     if created:
         schedule_job(job["id"])
     return job
+
+
+@router.get("/knowledge/graphiti/status")
+async def get_graphiti_status():
+    return await graphiti_service.get_status()
+
+
+@router.get("/knowledge/graphiti/search")
+async def search_graphiti(
+    q: str = Query(..., min_length=1),
+    kind: str = Query("facts", pattern="^(facts|nodes)$"),
+    limit: int = Query(10, ge=1, le=50),
+):
+    return await graphiti_service.search(q, kind=kind, limit=limit)

@@ -79,6 +79,35 @@ class TestKnowledgeGraph:
             assert node["type"] in ("project", "person", "concept", "tool", "topic")
 
     @patch("app.services.llm_service.LLMService.complete_json", new_callable=AsyncMock)
+    async def test_graph_normalizes_self_aliases_before_merge(self, mock_llm, client):
+        await _seed_full_pipeline(client, mock_llm)
+        mock_llm.return_value = {
+            "nodes": [
+                {"name": "User", "type": "person"},
+                {"name": "用户", "type": "person"},
+                {"name": "我", "type": "person"},
+                {"name": "Jira", "type": "tool"},
+                {"name": "员工", "type": "person"},
+            ],
+            "edges": [
+                {"source": "User", "target": "Jira", "relation": "uses"},
+                {"source": "用户", "target": "Jira", "relation": "uses"},
+                {"source": "员工", "target": "Jira", "relation": "related_to"},
+            ],
+        }
+        await client.post("/api/knowledge/rebuild")
+
+        resp = await client.get("/api/knowledge/graph")
+        nodes = {node["name"]: node for node in resp.json()["nodes"]}
+
+        assert "我" in nodes
+        assert "Jira" in nodes
+        assert "员工" in nodes
+        assert "User" not in nodes
+        assert "用户" not in nodes
+        assert nodes["员工"]["type"] == "topic"
+
+    @patch("app.services.llm_service.LLMService.complete_json", new_callable=AsyncMock)
     async def test_graph_edge_has_required_fields(self, mock_llm, client):
         await _seed_full_pipeline(client, mock_llm)
         mock_llm.return_value = LLM_GRAPH_RESPONSE

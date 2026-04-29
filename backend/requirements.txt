@@ -9,6 +9,7 @@ pydantic>=2.10.0
 pydantic-settings>=2.7.0
 python-dotenv>=1.0.1
 websocket-client>=1.8.0
+rapidfuzz>=3.14.0
 google-api-python-client>=2.150.0
 google-auth>=2.35.0
 google-auth-oauthlib>=1.2.1

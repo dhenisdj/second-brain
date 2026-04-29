@@ -1,3 +1,4 @@
+import logging
 from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Request
 from fastapi.responses import HTMLResponse
@@ -24,6 +25,7 @@ from app.services.gcal_collector import (
 from app.services.llm_service import rebuild_llm_service
 
 router = APIRouter(prefix="/api", tags=["settings"])
+logger = logging.getLogger(__name__)
 
 VALID_PROVIDERS = {"openai", "nvidia", "deepseek", "ollama"}
 DEEPSEEK_DEFAULT_MODEL = "deepseek-v4-flash"
@@ -232,6 +234,7 @@ async def complete_google_calendar_authorization(
             status_code=400,
         )
     except Exception:
+        logger.exception("Google OAuth callback failed while saving token")
         return HTMLResponse(
             "<html><body><h2>Google 数据源授权失败</h2><p>保存授权 token 时出现错误，请回到配置页重试。</p></body></html>",
             status_code=500,

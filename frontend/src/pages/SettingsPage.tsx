@@ -1,16 +1,10 @@
 import { useRef, useState, useEffect, type ReactNode } from 'react'
-import { Settings, Save, Loader2, Globe, Calendar, Upload, ExternalLink, GitBranch, Mail } from 'lucide-react'
+import { Settings, Save, Loader2, Globe, Upload, ExternalLink, GitBranch, Mail } from 'lucide-react'
 import axios from 'axios'
 import toast from 'react-hot-toast'
 import { useSettings, useUpdateSettings, useUploadGoogleCredentials, useStartGoogleCalendarAuthorization } from '../hooks/queries'
 import type { AppSettings, SettingsUpdatePayload } from '../types'
 import { openExternalUrl } from '../utils/openExternalUrl'
-
-const NVIDIA_MODELS = [
-  { id: 'deepseek-ai/deepseek-v3.2', name: 'DeepSeek V3.2' },
-  { id: 'moonshotai/kimi-k2.5', name: 'Kimi K2.5' },
-  { id: 'z-ai/glm4.7', name: 'GLM 4.7' },
-]
 
 const DEEPSEEK_MODELS = [
   { id: 'deepseek-v4-flash', name: 'DeepSeek V4 Flash', desc: '低延迟 / 日常分析' },
@@ -18,7 +12,6 @@ const DEEPSEEK_MODELS = [
 ]
 
 const PROVIDERS = [
-  { id: 'nvidia' as const, name: 'NVIDIA', desc: '云端 API（DeepSeek / Kimi / GLM 等）' },
   { id: 'deepseek' as const, name: 'DeepSeek', desc: '云端 API（官方 OpenAI 兼容接口）' },
   { id: 'openai' as const, name: 'OpenAI', desc: '云端 API（GPT-4o 等）' },
   { id: 'ollama' as const, name: 'Ollama', desc: '本地模型（完全私有）' },
@@ -26,20 +19,22 @@ const PROVIDERS = [
 
 const FULL_DISK_ACCESS_SETTINGS_URL = 'x-apple.systempreferences:com.apple.preference.security?Privacy_AllFiles'
 
-type SecretFieldKey = 'nvidia_api_key' | 'openai_api_key' | 'deepseek_api_key'
+type SecretFieldKey = 'openai_api_key' | 'deepseek_api_key'
 type SecretDrafts = Record<SecretFieldKey, string>
 type ClearedSecretFlags = Record<`clear_${SecretFieldKey}`, boolean>
 
 const EMPTY_SECRET_DRAFTS: SecretDrafts = {
-  nvidia_api_key: '',
   openai_api_key: '',
   deepseek_api_key: '',
 }
 
 const EMPTY_CLEARED_FLAGS: ClearedSecretFlags = {
-  clear_nvidia_api_key: false,
   clear_openai_api_key: false,
   clear_deepseek_api_key: false,
+}
+
+function normalizeVisibleProvider(provider: AppSettings['llm_provider'] | undefined): AppSettings['llm_provider'] {
+  return provider === 'nvidia' ? 'deepseek' : (provider ?? 'deepseek')
 }
 
 export default function SettingsPage() {
@@ -55,7 +50,7 @@ export default function SettingsPage() {
 
   useEffect(() => {
     if (!settings) return
-    setForm(settings)
+    setForm({ ...settings, llm_provider: normalizeVisibleProvider(settings.llm_provider) })
     setSecretDrafts(EMPTY_SECRET_DRAFTS)
     setClearedSecrets(EMPTY_CLEARED_FLAGS)
   }, [settings])
@@ -87,7 +82,6 @@ export default function SettingsPage() {
       openai_base_url: form.openai_base_url,
       deepseek_model: form.deepseek_model,
       deepseek_base_url: form.deepseek_base_url,
-      nvidia_model: form.nvidia_model,
       ollama_base_url: form.ollama_base_url,
       ollama_model: form.ollama_model,
       google_user_email: form.google_user_email,
@@ -104,9 +98,6 @@ export default function SettingsPage() {
       const clearFlag = `clear_${key}` as const
       if (value) {
         switch (key) {
-          case 'nvidia_api_key':
-            payload.nvidia_api_key = value
-            break
           case 'openai_api_key':
             payload.openai_api_key = value
             break
@@ -116,9 +107,6 @@ export default function SettingsPage() {
         }
       } else if (clearedSecrets[clearFlag]) {
         switch (clearFlag) {
-          case 'clear_nvidia_api_key':
-            payload.clear_nvidia_api_key = true
-            break
           case 'clear_openai_api_key':
             payload.clear_openai_api_key = true
             break
@@ -286,7 +274,7 @@ export default function SettingsPage() {
 
           <div className="mb-6">
             <label className="block text-xs font-medium text-gray-500 mb-2">AI 模型提供者</label>
-            <div className="grid gap-3 md:grid-cols-2">
+            <div className="grid gap-3 md:grid-cols-3">
               {PROVIDERS.map(p => (
                 <label key={p.id} className={`flex items-center gap-2 px-4 py-3 rounded-lg border-2 cursor-pointer transition-colors ${
                   form.llm_provider === p.id ? 'border-blue-500 bg-blue-50' : 'border-gray-200 hover:border-gray-300'
@@ -307,37 +295,6 @@ export default function SettingsPage() {
               ))}
             </div>
           </div>
-
-          {form.llm_provider === 'nvidia' && (
-            <div className="space-y-4 mb-6 p-4 bg-gray-50 rounded-lg">
-              <div>
-                <label className="block text-xs font-medium text-gray-500 mb-1">API Key</label>
-                <input
-                  type="password"
-                  value={secretDrafts.nvidia_api_key}
-                  onChange={e => updateSecretDraft('nvidia_api_key', e.target.value)}
-                  placeholder={form.nvidia_api_key_configured ? '已配置，留空表示保持不变' : 'nvapi-...'}
-                  className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm outline-none focus:ring-1 focus:ring-blue-500"
-                />
-                <SecretStatusRow
-                  configured={!!form.nvidia_api_key_configured}
-                  cleared={clearedSecrets.clear_nvidia_api_key}
-                  onClear={() => clearSavedSecret('nvidia_api_key')}
-                />
-              </div>
-              <div>
-                <label className="block text-xs font-medium text-gray-500 mb-1">模型</label>
-                <select
-                  value={form.nvidia_model ?? NVIDIA_MODELS[0].id}
-                  onChange={e => setForm({ ...form, nvidia_model: e.target.value })}
-                  className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm outline-none focus:ring-1 focus:ring-blue-500 bg-white"
-                >
-                  {NVIDIA_MODELS.map(m => <option key={m.id} value={m.id}>{m.name}（{m.id}）</option>)}
-                </select>
-              </div>
-              <p className="text-xs text-gray-400">Base URL: https://integrate.api.nvidia.com/v1（自动配置）</p>
-            </div>
-          )}
 
           {form.llm_provider === 'openai' && (
             <div className="space-y-4 mb-6 p-4 bg-gray-50 rounded-lg">
@@ -480,7 +437,7 @@ export default function SettingsPage() {
             <DataSourceGroup
               icon={<Globe className="w-4 h-4 text-emerald-600" />}
               title="浏览器"
-              description="统一管理本机浏览器历史采集，Chrome 负责常规历史和内网明细，Safari 用于补齐系统浏览记录。"
+              description="统一管理本机浏览器采集，Chrome 负责常规记录和内网明细，Safari 用于补齐系统浏览记录。"
               status={browserConfigDirty ? '待保存' : browserEnabledCount > 0 ? `${browserEnabledCount}/2 已启用` : '已关闭'}
               statusTone={
                 browserConfigDirty
@@ -491,18 +448,18 @@ export default function SettingsPage() {
               }
             >
               <SourceToggleRow
-                icon={<Globe className="w-4 h-4 text-emerald-600" />}
-                title="Chrome 历史"
-                description="读取本地 Chrome 最近 2 天历史；一键采集后还会分批补充内网页面明细。"
+                icon={<ChromeIcon className="w-5 h-5" />}
+                title="Chrome"
+                description="读取本地 Chrome 最近 2 天记录；一键采集后还会分批补充内网页面明细。"
                 status={form.chrome_history_enabled ? '已启用' : '已关闭'}
                 statusTone={form.chrome_history_enabled ? 'bg-emerald-100 text-emerald-700' : 'bg-gray-100 text-gray-500'}
                 enabled={!!form.chrome_history_enabled}
                 onToggle={checked => setForm({ ...form, chrome_history_enabled: checked })}
               />
               <SourceToggleRow
-                icon={<Globe className="w-4 h-4 text-sky-600" />}
-                title="Safari 历史"
-                description="读取本地 Safari 最近 2 天历史；需要系统完全磁盘访问权限。"
+                icon={<SafariIcon className="w-5 h-5" />}
+                title="Safari"
+                description="读取本地 Safari 最近 2 天记录；需要系统完全磁盘访问权限。"
                 status={form.safari_history_enabled ? '已启用' : '已关闭'}
                 statusTone={form.safari_history_enabled ? 'bg-sky-100 text-sky-700' : 'bg-gray-100 text-gray-500'}
                 enabled={!!form.safari_history_enabled}
@@ -628,7 +585,7 @@ export default function SettingsPage() {
 
               <div className="grid gap-3 md:grid-cols-2">
                 <SourceToggleRow
-                  icon={<Calendar className="w-4 h-4 text-orange-600" />}
+                  icon={<GoogleCalendarIcon className="w-5 h-5" />}
                   title="Google 日历"
                   description="采集会议、预约和时间块。"
                   status={googleStatus}
@@ -645,9 +602,9 @@ export default function SettingsPage() {
                   onToggle={checked => setForm({ ...form, google_calendar_enabled: checked })}
                 />
                 <SourceToggleRow
-                  icon={<Mail className="w-4 h-4 text-rose-600" />}
-                  title="Gmail / IM"
-                  description="采集邮件主题、收发件人、摘要和正文片段；后续 IM 类 Google 数据源可复用同一授权。"
+                  icon={<GmailIcon className="w-5 h-5" />}
+                  title="Gmail"
+                  description="采集邮件主题、收发件人、摘要和正文片段。"
                   status={gmailStatus}
                   statusTone={
                     gmailConfigDirty
@@ -718,6 +675,80 @@ export default function SettingsPage() {
         </div>
       </div>
     </div>
+  )
+}
+
+type BrandIconProps = {
+  className?: string
+}
+
+function ChromeIcon({ className = 'w-4 h-4' }: BrandIconProps) {
+  return (
+    <svg className={className} viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+      <circle cx="12" cy="12" r="10" fill="#fff" />
+      <path
+        d="M12 2a10 10 0 0 1 8.66 5H12a5 5 0 0 0-4.33 2.5L3.34 7A10 10 0 0 1 12 2Z"
+        fill="#EA4335"
+      />
+      <path
+        d="M20.66 7A10 10 0 0 1 12 22l4.33-7.5A5 5 0 0 0 12 7h8.66Z"
+        fill="#FBBC04"
+      />
+      <path
+        d="M12 22A10 10 0 0 1 3.34 7l4.33 7.5A5 5 0 0 0 16.33 14.5L12 22Z"
+        fill="#34A853"
+      />
+      <circle cx="12" cy="12" r="4.35" fill="#4285F4" />
+      <circle cx="12" cy="12" r="2.35" fill="#D2E3FC" />
+    </svg>
+  )
+}
+
+function SafariIcon({ className = 'w-4 h-4' }: BrandIconProps) {
+  return (
+    <svg className={className} viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+      <circle cx="12" cy="12" r="10" fill="#0A84FF" />
+      <circle cx="12" cy="12" r="8.1" fill="none" stroke="#fff" strokeOpacity="0.55" strokeWidth="0.8" />
+      <path
+        d="M12 4.9v1.8M12 17.3v1.8M4.9 12h1.8M17.3 12h1.8M6.95 6.95l1.25 1.25M15.8 15.8l1.25 1.25M17.05 6.95 15.8 8.2M8.2 15.8l-1.25 1.25"
+        fill="none"
+        stroke="#fff"
+        strokeLinecap="round"
+        strokeOpacity="0.72"
+      />
+      <path d="M16.45 6.55 13.25 13.25 6.55 16.45 10.75 10.75 16.45 6.55Z" fill="#fff" />
+      <path d="M7.55 17.45 10.75 10.75 17.45 7.55 13.25 13.25 7.55 17.45Z" fill="#FF3B30" />
+      <circle cx="12" cy="12" r="1.15" fill="#fff" />
+    </svg>
+  )
+}
+
+function GoogleCalendarIcon({ className = 'w-4 h-4' }: BrandIconProps) {
+  return (
+    <svg className={className} viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+      <rect x="4" y="3.5" width="16" height="17" rx="2.5" fill="#fff" />
+      <path d="M6.5 3.5h11A2.5 2.5 0 0 1 20 6v2.1H4V6a2.5 2.5 0 0 1 2.5-2.5Z" fill="#1A73E8" />
+      <path d="M4 8.1h4v12.4H6.5A2.5 2.5 0 0 1 4 18V8.1Z" fill="#34A853" />
+      <path d="M16 8.1h4V18a2.5 2.5 0 0 1-2.5 2.5H16V8.1Z" fill="#FBBC04" />
+      <path d="M6.5 20.5h11A2.5 2.5 0 0 0 20 18v-1.4H4V18a2.5 2.5 0 0 0 2.5 2.5Z" fill="#EA4335" />
+      <rect x="6.1" y="8.1" width="11.8" height="9.8" rx="1.2" fill="#fff" />
+      <text x="12" y="15.7" textAnchor="middle" fontSize="7" fontWeight="700" fill="#1A73E8">
+        31
+      </text>
+    </svg>
+  )
+}
+
+function GmailIcon({ className = 'w-4 h-4' }: BrandIconProps) {
+  return (
+    <svg className={className} viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+      <rect x="3" y="6" width="18" height="12" rx="2.4" fill="#fff" />
+      <path d="M5.4 18H8V9.55L3.35 6.35A2.35 2.35 0 0 0 3 7.6v8A2.4 2.4 0 0 0 5.4 18Z" fill="#EA4335" />
+      <path d="M16 18h2.6A2.4 2.4 0 0 0 21 15.6v-8c0-.45-.13-.88-.35-1.25L16 9.55V18Z" fill="#34A853" />
+      <path d="M3.35 6.35 12 12.65l8.65-6.3A2.4 2.4 0 0 0 18.6 5H5.4a2.4 2.4 0 0 0-2.05 1.35Z" fill="#EA4335" />
+      <path d="M3 8.2v2.9l5 3.6v-3.15L3 8.2Z" fill="#FBBC04" />
+      <path d="M21 8.2v2.9l-5 3.6v-3.15l5-3.35Z" fill="#4285F4" />
+    </svg>
   )
 }
 

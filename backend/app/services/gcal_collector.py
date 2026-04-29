@@ -19,6 +19,10 @@ logger = logging.getLogger(__name__)
 CALENDAR_SCOPES = ["https://www.googleapis.com/auth/calendar.readonly"]
 GMAIL_SCOPES = ["https://www.googleapis.com/auth/gmail.readonly"]
 SCOPES = CALENDAR_SCOPES + GMAIL_SCOPES
+SCOPE_LABELS = {
+    CALENDAR_SCOPES[0]: "Google Calendar 只读",
+    GMAIL_SCOPES[0]: "Gmail 只读",
+}
 GMAIL_API_SLUG = "gmail.googleapis.com"
 CALENDAR_API_SLUG = "calendar-json.googleapis.com"
 CRED_DIR = Path(os.getenv("SECOND_BRAIN_CREDENTIALS_DIR", Path(__file__).parent.parent.parent / "credentials"))
@@ -140,12 +144,65 @@ def execute_google_request(request, api_slug: str, api_label: str) -> dict:
         raise
 
 
+def _scope_set(value) -> set[str]:
+    if not value:
+        return set()
+    if isinstance(value, str):
+        return set(value.split())
+    return set(value)
+
+
+def _granted_scope_set(creds: Credentials) -> set[str]:
+    return _scope_set(getattr(creds, "granted_scopes", None)) or _scope_set(getattr(creds, "scopes", None))
+
+
 def _token_has_scopes(creds: Credentials, required_scopes: list[str] | None = None) -> bool:
     scopes = set(required_scopes or SCOPES)
-    granted = set(getattr(creds, "granted_scopes", None) or getattr(creds, "scopes", None) or [])
+    granted = _granted_scope_set(creds)
     if not granted:
         return False
     return scopes.issubset(granted)
+
+
+def _scope_label(scope: str) -> str:
+    return SCOPE_LABELS.get(scope, scope)
+
+
+def _missing_scope_message(missing_scopes: list[str]) -> str:
+    missing = "、".join(_scope_label(scope) for scope in missing_scopes)
+    return (
+        f"Google 授权未包含 {missing} 权限。请确认 OAuth 同意屏幕允许该权限，"
+        "并在 Google 授权页面勾选同意后重试。"
+    )
+
+
+def _validate_google_token_scopes(creds: Credentials, required_scopes: list[str] | None = None) -> None:
+    required = required_scopes or SCOPES
+    granted = _granted_scope_set(creds)
+    missing = [scope for scope in required if scope not in granted]
+    if missing:
+        raise ValueError(_missing_scope_message(missing))
+
+
+def _scope_warning_to_value_error(exc: Warning) -> ValueError:
+    new_scopes = _scope_set(getattr(exc, "new_scope", None))
+    if new_scopes:
+        missing = [scope for scope in SCOPES if scope not in new_scopes]
+        if missing:
+            return ValueError(_missing_scope_message(missing))
+    return ValueError("Google 返回的授权权限与请求不一致，请回到配置页重新授权 Google 数据源")
+
+
+def _fetch_token_allowing_scope_diff(flow: InstalledAppFlow, code: str):
+    previous = os.environ.get("OAUTHLIB_RELAX_TOKEN_SCOPE")
+    os.environ["OAUTHLIB_RELAX_TOKEN_SCOPE"] = "1"
+    try:
+        return flow.fetch_token(code=code)
+    finally:
+        if previous is None:
+            os.environ.pop("OAUTHLIB_RELAX_TOKEN_SCOPE", None)
+        else:
+            os.environ["OAUTHLIB_RELAX_TOKEN_SCOPE"] = previous
 
 
 def has_google_authorized_token(required_scopes: list[str] | None = None) -> bool:
@@ -360,10 +417,17 @@ def complete_google_authorization(state: str, code: str) -> dict:
     if not flow:
         raise ValueError("Google 授权状态已过期，请回到配置页重新发起授权")
 
-    flow.fetch_token(code=code)
+    try:
+        _fetch_token_allowing_scope_diff(flow, code)
+    except Warning as exc:
+        raise _scope_warning_to_value_error(exc) from exc
+
     creds = flow.credentials
+    _validate_google_token_scopes(creds, SCOPES)
     CRED_DIR.mkdir(parents=True, exist_ok=True)
-    TOKEN_PATH.write_text(creds.to_json(), encoding="utf-8")
+    tmp_path = TOKEN_PATH.with_suffix(".tmp")
+    tmp_path.write_text(creds.to_json(), encoding="utf-8")
+    tmp_path.replace(TOKEN_PATH)
     logger.info("OAuth2 authorization completed, token saved")
     return {"google_calendar_authorized": True, "google_gmail_authorized": True}
 

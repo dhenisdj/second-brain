@@ -20,6 +20,7 @@
 - Node.js 18.19+
 - Chrome 浏览器
 - (可选) Ollama — 如果需要使用本地模型
+- (可选) Graphiti MCP — 如果需要专业的时间感知知识图谱后端
 
 ### 启动前置配置：Chrome MCP Native Messaging Bridge
 
@@ -85,6 +86,43 @@ Claude Code 可按需添加 MCP 服务：
 ```bash
 claude mcp add --transport http chrome-mcp http://127.0.0.1:12306/mcp
 claude mcp list
+```
+
+### 可选配置：Graphiti Knowledge Graph MCP
+
+项目默认仍使用本地 SQLite 轻量图谱展示。若要启用更专业的实体/关系抽取和时间感知记忆，可以额外启动 Graphiti MCP，并让本项目在图谱刷新/重建时把每日总结与证据事件发布为 Graphiti episode。
+
+先启动 FalkorDB，或改用 Neo4j 配置：
+
+```bash
+docker run --rm -p 6379:6379 falkordb/falkordb
+```
+
+另开一个终端启动 Graphiti MCP：
+
+```bash
+git clone https://github.com/getzep/graphiti.git
+cd graphiti/mcp_server
+uv sync
+# 在 graphiti/mcp_server/.env 中配置 OPENAI_API_KEY / MODEL_NAME 后启动 MCP
+uv run main.py --transport http --port 8001 --group-id second-brain
+```
+
+Graphiti MCP 启动后，在 `backend/.env` 中打开：
+
+```bash
+GRAPHITI_MCP_ENABLED=true
+GRAPHITI_MCP_URL=http://127.0.0.1:8001/mcp/
+GRAPHITI_MCP_GROUP_ID=second-brain
+```
+
+Graphiti 需要 FalkorDB 或 Neo4j。若使用 Graphiti 官方 Docker Compose 的默认 `8000` 端口，请把 Graphiti 或本项目后端改到不同端口，避免两个服务都占用 `8000`。
+
+然后重启后端。可用以下接口检查或检索 Graphiti 记忆：
+
+```bash
+curl http://127.0.0.1:8000/api/knowledge/graphiti/status
+curl "http://127.0.0.1:8000/api/knowledge/graphiti/search?q=Transformer&kind=facts"
 ```
 
 ### 后端启动

@@ -1,6 +1,7 @@
 """AC-6: LLM 配置切换"""
 
 import json
+import os
 
 import pytest
 
@@ -271,3 +272,61 @@ class TestSettings:
         assert "gmail.readonly" in data["authorization_url"]
         assert data["state"]
         assert data["redirect_uri"] == "http://test/"
+
+    def test_complete_google_authorization_saves_token_after_scope_validation(self, tmp_path, monkeypatch):
+        class FakeCredentials:
+            scopes = gcal_collector.SCOPES
+            granted_scopes = gcal_collector.SCOPES
+
+            def to_json(self):
+                return json.dumps({"scopes": self.scopes})
+
+        class FakeFlow:
+            credentials = FakeCredentials()
+            relaxed_scope_check = False
+
+            def fetch_token(self, code):
+                assert code == "auth-code"
+                self.relaxed_scope_check = os.environ.get("OAUTHLIB_RELAX_TOKEN_SCOPE") == "1"
+                return {"access_token": "token"}
+
+        cred_dir = tmp_path / "credentials"
+        token_path = cred_dir / "gcal_token.json"
+        flow = FakeFlow()
+        monkeypatch.setattr(gcal_collector, "CRED_DIR", cred_dir)
+        monkeypatch.setattr(gcal_collector, "TOKEN_PATH", token_path)
+        monkeypatch.setitem(gcal_collector._PENDING_OAUTH_FLOWS, "state-1", flow)
+        monkeypatch.delenv("OAUTHLIB_RELAX_TOKEN_SCOPE", raising=False)
+
+        result = gcal_collector.complete_google_authorization("state-1", "auth-code")
+
+        assert result == {"google_calendar_authorized": True, "google_gmail_authorized": True}
+        assert flow.relaxed_scope_check is True
+        assert "OAUTHLIB_RELAX_TOKEN_SCOPE" not in os.environ
+        assert json.loads(token_path.read_text(encoding="utf-8"))["scopes"] == gcal_collector.SCOPES
+
+    def test_complete_google_authorization_rejects_missing_gmail_scope(self, tmp_path, monkeypatch):
+        class FakeCredentials:
+            scopes = gcal_collector.SCOPES
+            granted_scopes = gcal_collector.CALENDAR_SCOPES
+
+            def to_json(self):
+                return json.dumps({"scopes": self.scopes})
+
+        class FakeFlow:
+            credentials = FakeCredentials()
+
+            def fetch_token(self, code):
+                assert code == "auth-code"
+                return {"access_token": "token"}
+
+        cred_dir = tmp_path / "credentials"
+        token_path = cred_dir / "gcal_token.json"
+        monkeypatch.setattr(gcal_collector, "CRED_DIR", cred_dir)
+        monkeypatch.setattr(gcal_collector, "TOKEN_PATH", token_path)
+        monkeypatch.setitem(gcal_collector._PENDING_OAUTH_FLOWS, "state-1", FakeFlow())
+
+        with pytest.raises(ValueError, match="Gmail 只读"):
+            gcal_collector.complete_google_authorization("state-1", "auth-code")
+
+        assert not token_path.exists()
