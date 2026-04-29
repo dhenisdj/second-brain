@@ -16,7 +16,15 @@ async def _wait_for_job(client, job_id: str, attempts: int = 20):
 class TestBackgroundJobs:
     @patch("app.services.job_executor.graph_service.refresh_graph_for_date", new_callable=AsyncMock)
     @patch("app.services.job_executor.summary_service.generate_summary", new_callable=AsyncMock)
-    async def test_summary_async_job_persists_and_completes(self, mock_generate_summary, mock_refresh_graph, client):
+    @patch("app.services.job_executor.analysis_service.run_analysis", new_callable=AsyncMock)
+    async def test_summary_async_job_persists_and_completes(
+        self,
+        mock_run_analysis,
+        mock_generate_summary,
+        mock_refresh_graph,
+        client,
+    ):
+        mock_run_analysis.return_value = {"analyzed_count": 3, "categories": {"work": 3}}
         mock_generate_summary.return_value = {
             "id": "summary-1",
             "date": "2026-04-03",
@@ -38,7 +46,9 @@ class TestBackgroundJobs:
         finished = await _wait_for_job(client, job["id"])
         assert finished["status"] == "completed"
         assert finished["result"]["id"] == "summary-1"
+        assert finished["result"]["analysis"]["analyzed_count"] == 3
         assert finished["result"]["graph_job_id"]
+        mock_run_analysis.assert_awaited_once()
 
         status_resp = await client.get("/api/summary/status/2026-04-03")
         assert status_resp.status_code == 200

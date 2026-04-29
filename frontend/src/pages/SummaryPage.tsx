@@ -5,7 +5,7 @@ import { BarChart3, Clock, Lightbulb, Rocket, Loader2, Sparkles } from 'lucide-r
 import ReactMarkdown from 'react-markdown'
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip } from 'recharts'
 import toast from 'react-hot-toast'
-import { useSummary, useRunAnalysis, useStartSummaryGeneration, useJob } from '../hooks/queries'
+import { useSummary, useStartSummaryGeneration, useJob } from '../hooks/queries'
 import { getTodayDateInputValue } from '../utils/date'
 
 const COLORS: Record<string, string> = { work: '#3b82f6', study: '#8b5cf6', life: '#10b981', entertainment: '#f59e0b' }
@@ -14,7 +14,6 @@ const LABELS: Record<string, string> = { work: '工作', study: '学习', life: 
 export default function SummaryPage() {
   const [date, setDate] = useState(getTodayDateInputValue())
   const { data: summary, isLoading, error, refetch } = useSummary(date)
-  const analysisMut = useRunAnalysis()
   const summaryMut = useStartSummaryGeneration()
   const qc = useQueryClient()
   const [step, setStep] = useState<string | null>(null)
@@ -27,6 +26,7 @@ export default function SummaryPage() {
 
     if (jobStatus.status === 'completed') {
       if (jobDate === date) refetch()
+      qc.invalidateQueries({ queryKey: ['events'] })
       qc.invalidateQueries({ queryKey: ['graph'] })
       setJobId(null)
       setJobDate(null)
@@ -45,14 +45,13 @@ export default function SummaryPage() {
 
   const handleGenerate = async () => {
     try {
-      setStep('正在分析事件...')
-      await analysisMut.mutateAsync(date)
-      setStep('正在生成总结...')
+      setStep('正在创建后台任务...')
       const job = await summaryMut.mutateAsync(date)
       setJobId(job.id)
       setJobDate(date)
+      setStep('后台分析与总结中...')
       if (job.status === 'pending' || job.status === 'running') {
-        toast.success('已开始生成总结，完成后会自动刷新')
+        toast.success('已开始后台分析与总结，完成后会自动刷新')
       } else if (job.status === 'completed') {
         setJobId(null)
         setJobDate(null)
@@ -76,7 +75,7 @@ export default function SummaryPage() {
     ? Object.entries(summary.time_distribution).map(([key, value]) => ({ name: LABELS[key] ?? key, value, color: COLORS[key] ?? '#94a3b8' }))
     : []
 
-  const isWorking = analysisMut.isPending || summaryMut.isPending || !!jobDate
+  const isWorking = summaryMut.isPending || !!jobDate
 
   return (
     <div>

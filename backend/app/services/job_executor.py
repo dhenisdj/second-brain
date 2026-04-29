@@ -2,7 +2,7 @@ import asyncio
 import logging
 
 from app.database import get_session_factory
-from app.services import graph_service, plan_service, summary_service
+from app.services import analysis_service, graph_service, plan_service, summary_service
 from app.services.llm_service import LLMTimeoutError
 from app.services import job_service
 
@@ -12,6 +12,7 @@ _running_tasks: dict[str, asyncio.Task] = {}
 
 async def _handle_summary_generate(db, payload: dict) -> dict:
     date_str = payload["date"]
+    analysis_result = await analysis_service.run_analysis(db, date_str)
     result = await summary_service.generate_summary(db, date_str)
     graph_job, created = await job_service.enqueue_job(
         db,
@@ -21,6 +22,7 @@ async def _handle_summary_generate(db, payload: dict) -> dict:
     )
     if created:
         schedule_job(graph_job["id"])
+    result["analysis"] = analysis_result
     result["graph_job_id"] = graph_job["id"]
     return result
 
