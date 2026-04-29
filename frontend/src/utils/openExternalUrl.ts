@@ -14,8 +14,5 @@ export function openExternalUrl(url: string) {
     return
   }
 
-  const opened = window.open(url, '_blank', 'noopener,noreferrer')
-  if (!opened) {
-    window.location.assign(url)
-  }
+  window.open(url, '_blank', 'noopener,noreferrer')
 }
