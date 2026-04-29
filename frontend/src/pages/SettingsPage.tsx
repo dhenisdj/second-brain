@@ -221,7 +221,11 @@ export default function SettingsPage() {
     (form.git_repo_paths ?? '') !== (settings.git_repo_paths ?? '') ||
     (form.git_author_filter ?? '') !== (settings.git_author_filter ?? '')
   )
-  const googleConfigDirty = !!settings && (
+  const browserConfigDirty = !!settings && (
+    form.chrome_history_enabled !== settings.chrome_history_enabled ||
+    form.safari_history_enabled !== settings.safari_history_enabled
+  )
+  const calendarConfigDirty = !!settings && (
     form.google_calendar_enabled !== settings.google_calendar_enabled ||
     form.google_user_email !== settings.google_user_email
   )
@@ -229,8 +233,9 @@ export default function SettingsPage() {
     form.gmail_enabled !== settings.gmail_enabled ||
     form.google_user_email !== settings.google_user_email
   )
+  const googleConfigDirty = calendarConfigDirty || gmailConfigDirty
 
-  const googleStatus = googleConfigDirty
+  const googleStatus = calendarConfigDirty
     ? '待保存'
     : !form.google_calendar_enabled
     ? '已关闭'
@@ -256,6 +261,8 @@ export default function SettingsPage() {
         ? '待授权'
         : '待完善配置'
   const googleAuthComplete = !!form.google_calendar_authorized && !!form.google_gmail_authorized
+  const browserEnabledCount = [form.chrome_history_enabled, form.safari_history_enabled].filter(Boolean).length
+  const googleEnabledCount = [form.google_calendar_enabled, form.gmail_enabled].filter(Boolean).length
   const googleAuthStatusText = googleAuthComplete
     ? '已保存日历与 Gmail 授权 token'
     : form.google_calendar_authorized
@@ -471,38 +478,151 @@ export default function SettingsPage() {
           )}
 
           <div className="space-y-4">
-            <SourceCard
+            <DataSourceGroup
               icon={<Globe className="w-4 h-4 text-emerald-600" />}
-              title="Chrome 历史"
-              description="自动读取本地 Chrome 最近 2 天的浏览记录。"
-              status={form.chrome_history_enabled ? '已启用' : '已关闭'}
-              statusTone={form.chrome_history_enabled ? 'bg-emerald-100 text-emerald-700' : 'bg-gray-100 text-gray-500'}
-              enabled={!!form.chrome_history_enabled}
-              onToggle={checked => setForm({ ...form, chrome_history_enabled: checked })}
+              title="浏览器"
+              description="统一管理本机浏览器历史采集，Chrome 负责常规历史和内网明细，Safari 用于补齐系统浏览记录。"
+              status={browserConfigDirty ? '待保存' : browserEnabledCount > 0 ? `${browserEnabledCount}/2 已启用` : '已关闭'}
+              statusTone={
+                browserConfigDirty
+                  ? 'bg-amber-100 text-amber-700'
+                  : browserEnabledCount > 0
+                    ? 'bg-emerald-100 text-emerald-700'
+                    : 'bg-gray-100 text-gray-500'
+              }
             >
-              <div className="rounded-lg bg-emerald-50/60 px-3 py-2 text-xs text-emerald-700">
-                首次使用时，系统可能要求为终端或 Python 解释器授予 Chrome 历史读取权限。
+              <SourceToggleRow
+                icon={<Globe className="w-4 h-4 text-emerald-600" />}
+                title="Chrome 历史"
+                description="读取本地 Chrome 最近 2 天历史；一键采集后还会分批补充内网页面明细。"
+                status={form.chrome_history_enabled ? '已启用' : '已关闭'}
+                statusTone={form.chrome_history_enabled ? 'bg-emerald-100 text-emerald-700' : 'bg-gray-100 text-gray-500'}
+                enabled={!!form.chrome_history_enabled}
+                onToggle={checked => setForm({ ...form, chrome_history_enabled: checked })}
+              />
+              <SourceToggleRow
+                icon={<Globe className="w-4 h-4 text-sky-600" />}
+                title="Safari 历史"
+                description="读取本地 Safari 最近 2 天历史；需要系统完全磁盘访问权限。"
+                status={form.safari_history_enabled ? '已启用' : '已关闭'}
+                statusTone={form.safari_history_enabled ? 'bg-sky-100 text-sky-700' : 'bg-gray-100 text-gray-500'}
+                enabled={!!form.safari_history_enabled}
+                onToggle={checked => setForm({ ...form, safari_history_enabled: checked })}
+              />
+              <div className="rounded-lg bg-slate-50 px-3 py-2 text-xs text-slate-600">
+                浏览器组不需要额外账号配置；Chrome 内网明细依赖已配置的 Chrome MCP Native Messaging Bridge。
               </div>
-            </SourceCard>
+            </DataSourceGroup>
 
-            <SourceCard
-              icon={<Globe className="w-4 h-4 text-sky-600" />}
-              title="Safari 历史"
-              description="自动读取本地 Safari 最近 2 天的浏览记录。"
-              status={form.safari_history_enabled ? '已启用' : '已关闭'}
-              statusTone={form.safari_history_enabled ? 'bg-sky-100 text-sky-700' : 'bg-gray-100 text-gray-500'}
-              enabled={!!form.safari_history_enabled}
-              onToggle={checked => setForm({ ...form, safari_history_enabled: checked })}
+            <DataSourceGroup
+              icon={<Mail className="w-4 h-4 text-rose-600" />}
+              title="Google"
+              description="一套 Google 邮箱、OAuth JSON 和授权 token，可同时服务日历、Gmail 等 Google 数据源。"
+              status={googleConfigDirty ? '待保存' : googleEnabledCount > 0 ? `${googleEnabledCount}/2 已启用` : '已关闭'}
+              statusTone={
+                googleConfigDirty
+                  ? 'bg-amber-100 text-amber-700'
+                  : googleEnabledCount > 0
+                    ? 'bg-rose-100 text-rose-700'
+                    : 'bg-gray-100 text-gray-500'
+              }
             >
-              <div className="rounded-lg bg-sky-50/60 px-3 py-2 text-xs text-sky-700">
-                Safari 更依赖系统权限；如果被拒绝，需要为终端或 Python 解释器授予“完全磁盘访问权限”。
+              <div className="grid gap-3 md:grid-cols-[1fr_auto_auto] md:items-end">
+                <div>
+                  <label className="block text-xs font-medium text-gray-500 mb-1">Google 邮箱地址</label>
+                  <input
+                    value={form.google_user_email ?? ''}
+                    onChange={e => setForm({ ...form, google_user_email: e.target.value })}
+                    placeholder="your.name@company.com"
+                    className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm outline-none focus:ring-1 focus:ring-blue-500"
+                  />
+                  <p className="text-xs text-gray-400 mt-1">日历和 Gmail 共用这一个账号。</p>
+                </div>
+                <div className="rounded-lg border border-gray-200 bg-gray-50 px-3 py-2">
+                  <p className="text-xs font-medium text-gray-600">OAuth JSON</p>
+                  <p className="text-xs text-gray-400 mt-1">
+                    {form.google_credentials_configured ? '已上传' : '未上传'}
+                  </p>
+                </div>
+                <input
+                  id="google-credentials-file"
+                  ref={googleCredentialsInputRef}
+                  type="file"
+                  accept="application/json,.json"
+                  disabled={uploadGoogleCredentialsMut.isPending}
+                  onChange={event => handleGoogleCredentialsChange(event.target.files?.[0])}
+                  className="sr-only"
+                />
+                <label
+                  htmlFor="google-credentials-file"
+                  className={`inline-flex h-10 items-center justify-center gap-1.5 rounded-lg border border-gray-200 bg-white px-3 text-xs font-medium text-gray-700 hover:border-gray-300 ${
+                    uploadGoogleCredentialsMut.isPending ? 'pointer-events-none opacity-50' : 'cursor-pointer'
+                  }`}
+                >
+                  {uploadGoogleCredentialsMut.isPending ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Upload className="w-3.5 h-3.5" />}
+                  上传 JSON
+                </label>
               </div>
-            </SourceCard>
 
-            <SourceCard
+              <div className="rounded-lg border border-gray-200 bg-gray-50 p-3">
+                <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                  <div>
+                    <p className="text-xs font-medium text-gray-600">Google 数据源授权</p>
+                    <p className="text-xs text-gray-400 mt-1">{googleAuthStatusText}</p>
+                  </div>
+                  <button
+                    onClick={handleGoogleAuthorize}
+                    disabled={!form.google_credentials_configured || startGoogleAuthMut.isPending}
+                    className="inline-flex items-center justify-center gap-1.5 rounded-lg border border-gray-200 bg-white px-3 py-2 text-xs font-medium text-gray-700 hover:border-gray-300 disabled:opacity-50"
+                  >
+                    {startGoogleAuthMut.isPending ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <ExternalLink className="w-3.5 h-3.5" />}
+                    {googleAuthButtonText}
+                  </button>
+                </div>
+              </div>
+
+              <div className="grid gap-3 md:grid-cols-2">
+                <SourceToggleRow
+                  icon={<Calendar className="w-4 h-4 text-orange-600" />}
+                  title="Google 日历"
+                  description="采集会议、预约和时间块。"
+                  status={googleStatus}
+                  statusTone={
+                    calendarConfigDirty
+                      ? 'bg-amber-100 text-amber-700'
+                      : !form.google_calendar_enabled
+                        ? 'bg-gray-100 text-gray-500'
+                        : form.google_user_email && form.google_credentials_configured && form.google_calendar_authorized
+                          ? 'bg-orange-100 text-orange-700'
+                          : 'bg-amber-100 text-amber-700'
+                  }
+                  enabled={!!form.google_calendar_enabled}
+                  onToggle={checked => setForm({ ...form, google_calendar_enabled: checked })}
+                />
+                <SourceToggleRow
+                  icon={<Mail className="w-4 h-4 text-rose-600" />}
+                  title="Gmail / IM"
+                  description="采集邮件主题、收发件人、摘要和正文片段；后续 IM 类 Google 数据源可复用同一授权。"
+                  status={gmailStatus}
+                  statusTone={
+                    gmailConfigDirty
+                      ? 'bg-amber-100 text-amber-700'
+                      : !form.gmail_enabled
+                        ? 'bg-gray-100 text-gray-500'
+                        : form.google_user_email && form.google_credentials_configured && form.google_gmail_authorized
+                          ? 'bg-rose-100 text-rose-700'
+                          : 'bg-amber-100 text-amber-700'
+                  }
+                  enabled={!!form.gmail_enabled}
+                  onToggle={checked => setForm({ ...form, gmail_enabled: checked })}
+                />
+              </div>
+            </DataSourceGroup>
+
+            <DataSourceGroup
               icon={<GitBranch className="w-4 h-4 text-slate-700" />}
-              title="Git 记录"
-              description="读取本地 Git 仓库或工作区目录最近 2 天的提交记录。"
+              title="Git"
+              description="统一采集本地已克隆仓库的提交记录，支持 GitHub、GitLab 和本地工作区多路径。"
               status={gitStatus}
               statusTone={
                 gitConfigDirty
@@ -518,15 +638,15 @@ export default function SettingsPage() {
             >
               <div className="space-y-3">
                 <div>
-                  <label className="block text-xs font-medium text-gray-500 mb-1">仓库或工作区路径</label>
+                  <label className="block text-xs font-medium text-gray-500 mb-1">仓库或工作区路径（可多行）</label>
                   <textarea
                     value={form.git_repo_paths ?? ''}
                     onChange={e => setForm({ ...form, git_repo_paths: e.target.value })}
-                    placeholder={'/Users/you/workspace\n/Users/you/project-a'}
-                    rows={4}
+                    placeholder={'/Users/you/workspace/github-projects\n/Users/you/workspace/gitlab-projects\n/Users/you/project-a'}
+                    rows={5}
                     className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm outline-none focus:ring-1 focus:ring-blue-500 resize-none font-mono"
                   />
-                  <p className="text-xs text-gray-400 mt-1">一行一个路径；可以填单个仓库，也可以填工作区目录，系统会自动发现子仓库。</p>
+                  <p className="text-xs text-gray-400 mt-1">一行一个本地路径；可以填单个仓库，也可以填 GitHub/GitLab 的克隆目录或工作区目录，系统会自动发现子仓库。</p>
                 </div>
                 <div>
                   <label className="block text-xs font-medium text-gray-500 mb-1">作者过滤</label>
@@ -539,110 +659,7 @@ export default function SettingsPage() {
                   <p className="text-xs text-gray-400 mt-1">留空会采集仓库中所有作者的提交。</p>
                 </div>
               </div>
-            </SourceCard>
-
-            <SourceCard
-              icon={<Mail className="w-4 h-4 text-rose-600" />}
-              title="Gmail"
-              description="采集最近 2 天的邮件主题、收发件人、摘要和正文片段，补齐异步沟通记录。"
-              status={gmailStatus}
-              statusTone={
-                gmailConfigDirty
-                  ? 'bg-amber-100 text-amber-700'
-                  : !form.gmail_enabled
-                  ? 'bg-gray-100 text-gray-500'
-                  : form.google_user_email && form.google_credentials_configured
-                    ? form.google_gmail_authorized
-                      ? 'bg-rose-100 text-rose-700'
-                      : 'bg-amber-100 text-amber-700'
-                    : 'bg-amber-100 text-amber-700'
-              }
-              enabled={!!form.gmail_enabled}
-              onToggle={checked => setForm({ ...form, gmail_enabled: checked })}
-            >
-              <div className="rounded-lg bg-rose-50/60 px-3 py-2 text-xs text-rose-700">
-                Gmail 复用下方 Google 邮箱、OAuth JSON 和授权；授权时会同时申请日历只读与 Gmail 只读权限。
-              </div>
-            </SourceCard>
-
-            <SourceCard
-              icon={<Calendar className="w-4 h-4 text-orange-600" />}
-              title="Google 日历"
-              description="采集最近 2 天的日历事件，适合补齐会议、预约和时间块。"
-              status={googleStatus}
-              statusTone={
-                googleConfigDirty
-                  ? 'bg-amber-100 text-amber-700'
-                  : !form.google_calendar_enabled
-                  ? 'bg-gray-100 text-gray-500'
-                  : form.google_user_email && form.google_credentials_configured
-                    ? form.google_calendar_authorized
-                      ? 'bg-orange-100 text-orange-700'
-                      : 'bg-amber-100 text-amber-700'
-                    : 'bg-amber-100 text-amber-700'
-              }
-              enabled={!!form.google_calendar_enabled}
-              onToggle={checked => setForm({ ...form, google_calendar_enabled: checked })}
-            >
-              <div className="space-y-3">
-                <div>
-                  <label className="block text-xs font-medium text-gray-500 mb-1">Google 邮箱地址</label>
-                  <input
-                    value={form.google_user_email ?? ''}
-                    onChange={e => setForm({ ...form, google_user_email: e.target.value })}
-                    placeholder="your.name@company.com"
-                    className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm outline-none focus:ring-1 focus:ring-blue-500"
-                  />
-                  <p className="text-xs text-gray-400 mt-1">用于采集该账号可访问的 Google Calendar 事件和 Gmail 邮件。</p>
-                </div>
-                <div className="rounded-lg border border-gray-200 bg-gray-50 p-3">
-                  <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                    <div>
-                      <p className="text-xs font-medium text-gray-600">OAuth 凭据文件</p>
-                      <p className="text-xs text-gray-400 mt-1">
-                        {form.google_credentials_configured ? '已保存 google_credentials.json' : '未上传 Google OAuth JSON'}
-                      </p>
-                    </div>
-                    <input
-                      id="google-credentials-file"
-                      ref={googleCredentialsInputRef}
-                      type="file"
-                      accept="application/json,.json"
-                      disabled={uploadGoogleCredentialsMut.isPending}
-                      onChange={event => handleGoogleCredentialsChange(event.target.files?.[0])}
-                      className="sr-only"
-                    />
-                    <label
-                      htmlFor="google-credentials-file"
-                      className={`inline-flex items-center justify-center gap-1.5 rounded-lg border border-gray-200 bg-white px-3 py-2 text-xs font-medium text-gray-700 hover:border-gray-300 ${
-                        uploadGoogleCredentialsMut.isPending ? 'pointer-events-none opacity-50' : 'cursor-pointer'
-                      }`}
-                    >
-                      {uploadGoogleCredentialsMut.isPending ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Upload className="w-3.5 h-3.5" />}
-                      上传 JSON
-                    </label>
-                  </div>
-                </div>
-                <div className="rounded-lg border border-gray-200 bg-gray-50 p-3">
-                  <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                    <div>
-                      <p className="text-xs font-medium text-gray-600">Google 数据源授权</p>
-                      <p className="text-xs text-gray-400 mt-1">
-                        {googleAuthStatusText}
-                      </p>
-                    </div>
-                    <button
-                      onClick={handleGoogleAuthorize}
-                      disabled={!form.google_credentials_configured || startGoogleAuthMut.isPending}
-                      className="inline-flex items-center justify-center gap-1.5 rounded-lg border border-gray-200 bg-white px-3 py-2 text-xs font-medium text-gray-700 hover:border-gray-300 disabled:opacity-50"
-                    >
-                      {startGoogleAuthMut.isPending ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <ExternalLink className="w-3.5 h-3.5" />}
-                      {googleAuthButtonText}
-                    </button>
-                  </div>
-                </div>
-              </div>
-            </SourceCard>
+            </DataSourceGroup>
           </div>
 
           <button
@@ -659,7 +676,7 @@ export default function SettingsPage() {
   )
 }
 
-function SourceCard({
+function DataSourceGroup({
   icon,
   title,
   description,
@@ -674,10 +691,12 @@ function SourceCard({
   description: string
   status: string
   statusTone: string
-  enabled: boolean
-  onToggle: (checked: boolean) => void
+  enabled?: boolean
+  onToggle?: (checked: boolean) => void
   children: ReactNode
 }) {
+  const hasGroupToggle = typeof enabled === 'boolean' && !!onToggle
+
   return (
     <div className="rounded-xl border border-gray-200 p-4">
       <div className="flex items-start justify-between gap-4">
@@ -693,12 +712,48 @@ function SourceCard({
             <p className="text-xs text-gray-500 mt-1">{description}</p>
           </div>
         </div>
-        <Toggle checked={enabled} onChange={onToggle} />
+        {hasGroupToggle && <Toggle checked={enabled} onChange={onToggle} />}
       </div>
 
-      <div className="mt-4 md:pl-[52px]">
+      <div className="mt-4 space-y-3 md:pl-[52px]">
         {children}
       </div>
+    </div>
+  )
+}
+
+function SourceToggleRow({
+  icon,
+  title,
+  description,
+  status,
+  statusTone,
+  enabled,
+  onToggle,
+}: {
+  icon: ReactNode
+  title: string
+  description: string
+  status: string
+  statusTone: string
+  enabled: boolean
+  onToggle: (checked: boolean) => void
+}) {
+  return (
+    <div className="flex items-start justify-between gap-3 rounded-lg border border-gray-100 bg-white px-3 py-3">
+      <div className="flex min-w-0 items-start gap-3">
+        <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-gray-100 bg-gray-50">
+          {icon}
+        </div>
+        <div className="min-w-0">
+          <div className="flex flex-wrap items-center gap-2">
+            <p className="text-sm font-medium text-gray-800">{title}</p>
+            <span className={`px-2 py-0.5 rounded-full text-[11px] ${statusTone}`}>{status}</span>
+          </div>
+          <p className="mt-1 text-xs leading-5 text-gray-500">{description}</p>
+        </div>
+      </div>
+      <Toggle checked={enabled} onChange={onToggle} />
     </div>
   )
 }
