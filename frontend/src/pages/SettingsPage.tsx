@@ -527,7 +527,7 @@ export default function SettingsPage() {
                     : 'bg-gray-100 text-gray-500'
               }
             >
-              <div className="grid gap-3 md:grid-cols-[1fr_auto_auto] md:items-end">
+              <div className="grid gap-3 md:grid-cols-[minmax(0,1fr)_auto] md:items-end">
                 <div>
                   <label className="block text-xs font-medium text-gray-500 mb-1">Google 邮箱地址</label>
                   <input
@@ -537,12 +537,6 @@ export default function SettingsPage() {
                     className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm outline-none focus:ring-1 focus:ring-blue-500"
                   />
                   <p className="text-xs text-gray-400 mt-1">日历和 Gmail 共用这一个账号。</p>
-                </div>
-                <div className="rounded-lg border border-gray-200 bg-gray-50 px-3 py-2">
-                  <p className="text-xs font-medium text-gray-600">OAuth JSON</p>
-                  <p className="text-xs text-gray-400 mt-1">
-                    {form.google_credentials_configured ? '已上传' : '未上传'}
-                  </p>
                 </div>
                 <input
                   id="google-credentials-file"
@@ -555,12 +549,16 @@ export default function SettingsPage() {
                 />
                 <label
                   htmlFor="google-credentials-file"
-                  className={`inline-flex h-10 items-center justify-center gap-1.5 rounded-lg border border-gray-200 bg-white px-3 text-xs font-medium text-gray-700 hover:border-gray-300 ${
+                  className={`inline-flex h-10 items-center justify-center gap-1.5 whitespace-nowrap rounded-lg border border-gray-200 bg-white px-3 text-xs font-medium text-gray-700 hover:border-gray-300 ${
                     uploadGoogleCredentialsMut.isPending ? 'pointer-events-none opacity-50' : 'cursor-pointer'
                   }`}
                 >
                   {uploadGoogleCredentialsMut.isPending ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Upload className="w-3.5 h-3.5" />}
-                  上传 JSON
+                  {uploadGoogleCredentialsMut.isPending
+                    ? '上传中'
+                    : form.google_credentials_configured
+                      ? '已上传，点击更新'
+                      : '上传 OAuth JSON'}
                 </label>
               </div>
 
