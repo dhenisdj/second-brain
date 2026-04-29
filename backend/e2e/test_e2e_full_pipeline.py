@@ -114,6 +114,11 @@ class TestFullPipeline:
         assert get_summary.json()["date"] == target_date
 
         # ── Step 4: Check knowledge graph (AC-4) ──
+        mock_llm.side_effect = None
+        mock_llm.return_value = LLM_GRAPH
+        rebuild_resp = await client.post("/api/knowledge/rebuild")
+        assert rebuild_resp.status_code == 200
+
         graph_resp = await client.get("/api/knowledge/graph")
         assert graph_resp.status_code == 200
         graph = graph_resp.json()
@@ -194,7 +199,7 @@ class TestChromeUploadPipeline:
         assert resp.status_code == 200
         assert resp.json()["imported_count"] == 2
 
-        events = await client.get("/api/events", params={"date": "2026-04-02"})
+        events = await client.get("/api/events", params={"date": "2026-04-02", "aggregate_browser": False})
         assert events.json()["total"] == 2
         urls = [e["url"] for e in events.json()["items"]]
         assert "https://docs.python.org" in urls
