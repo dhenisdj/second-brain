@@ -1,6 +1,6 @@
 import { useState, type ReactNode } from 'react'
 import { Link } from 'react-router-dom'
-import { PenLine, Clock, Loader2, Plus, Trash2, X, Sparkles, ExternalLink } from 'lucide-react'
+import { PenLine, Clock, Loader2, Plus, Trash2, X, Sparkles, ExternalLink, Upload } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { useCollectConfiguredSources, useIngestChromeDevtoolsHistory, useIngestManual, useEvents, useSettings } from '../hooks/queries'
 import type { ActivityEvent, CollectSourceResult, ManualEntry } from '../types'
@@ -39,7 +39,7 @@ function HoverHint({ icon, text }: { icon: ReactNode; text: string }) {
   return (
     <span className="relative inline-flex group" title={text} aria-label={text}>
       <span className="cursor-help">{icon}</span>
-      <span className="pointer-events-none absolute left-1/2 top-full z-20 mt-2 w-56 -translate-x-1/2 rounded-xl bg-gray-900 px-3 py-2 text-xs leading-5 text-white opacity-0 shadow-lg transition-opacity group-hover:opacity-100">
+      <span className="pointer-events-none absolute left-1/2 top-full z-20 mt-2 w-56 -translate-x-1/2 rounded-lg bg-slate-900 px-3 py-2 text-xs leading-5 text-white opacity-0 shadow-lg transition-opacity group-hover:opacity-100">
         {text}
       </span>
     </span>
@@ -49,7 +49,7 @@ function HoverHint({ icon, text }: { icon: ReactNode; text: string }) {
 function getCollectResultTone(result: CollectSourceResult) {
   if (result.status === 'failed') return 'border-red-200 bg-red-50/70'
   if (result.status === 'misconfigured') return 'border-amber-200 bg-amber-50/70'
-  if (result.status === 'disabled') return 'border-gray-200 bg-gray-50'
+  if (result.status === 'disabled') return 'border-slate-200 bg-slate-50'
   if (result.imported_count > 0) return 'border-emerald-200 bg-emerald-50/70'
   return 'border-slate-200 bg-slate-50/70'
 }
@@ -277,44 +277,51 @@ export default function IngestPage() {
   }
 
   return (
-    <div>
-      <div className="flex items-start justify-between gap-4 mb-6">
-        <div>
-          <h1 className="text-xl font-semibold text-gray-900">干了啥</h1>
+    <div className="min-w-0 max-w-full space-y-4 overflow-hidden">
+      <section className="rounded-lg border border-slate-200 bg-white px-4 py-4 shadow-sm">
+        <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex items-center gap-3">
+            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-slate-950 text-white">
+              <Upload className="h-5 w-5" />
+            </div>
+            <div>
+              <h1 className="text-xl font-semibold text-slate-950">干了啥</h1>
+              <p className="mt-1 text-sm text-slate-500">采集、补记和查看当天活动记录</p>
+            </div>
+          </div>
+          <button
+            onClick={() => setIsManualOpen(true)}
+            className="inline-flex h-9 shrink-0 items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 text-sm font-medium text-slate-700 shadow-sm transition-colors hover:border-slate-300 hover:bg-slate-50"
+          >
+            <HoverHint
+              icon={<PenLine className="w-4 h-4 text-violet-500" />}
+              text="二级入口，只在补漏或纠错时使用，适合补录线下沟通、临时电话和深度工作。"
+            />
+            补记一条
+            {entries.length > 0 && <span className="px-1.5 py-0.5 rounded-full bg-violet-100 text-violet-700 text-[11px]">{entries.length}</span>}
+          </button>
         </div>
-        <button
-          onClick={() => setIsManualOpen(true)}
-          className="shrink-0 px-3 py-2 bg-white border border-gray-200 text-sm rounded-xl hover:border-gray-300 hover:bg-gray-50 transition-colors flex items-center gap-2 text-gray-700"
-        >
-          <HoverHint
-            icon={<PenLine className="w-4 h-4 text-violet-500" />}
-            text="二级入口，只在补漏或纠错时使用，适合补录线下沟通、临时电话和深度工作。"
-          />
-          补记一条
-          {entries.length > 0 && <span className="px-1.5 py-0.5 rounded-full bg-violet-100 text-violet-700 text-[11px]">{entries.length}</span>}
-        </button>
-      </div>
+      </section>
 
-      <div className="bg-white rounded-xl border border-gray-200 p-5 mb-6">
-        <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+      <section className="rounded-lg border border-dashed border-slate-200 bg-slate-50/80 p-3">
+        <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
           <div>
             <div className="flex items-center gap-2">
-              <Sparkles className="w-4 h-4 text-blue-600" />
-              <p className="text-sm font-medium text-gray-800">一键采集数据</p>
+              <Sparkles className="w-4 h-4 text-slate-400" />
+              <p className="text-sm font-medium text-slate-700">手动补采</p>
             </div>
-            <p className="text-sm text-gray-500 mt-1">会采集最近 2 天的已启用数据源，并自动刷新下方事件列表。</p>
-            <p className="text-xs text-gray-500 mt-2">Chrome 内网页面会在普通采集完成后分批补充，每批完成后先刷新已采集到的数据。</p>
-            <div className="flex flex-wrap gap-2 mt-3">
+            <p className="mt-1 text-xs text-slate-500">自动任务会定时刷新；缺数据时可手动补采最近 2 天的数据源。</p>
+            <div className="mt-2 flex flex-wrap gap-2">
               {sourceConfigs.map(item => {
                 const statusText = !item.enabled ? '已关闭' : item.ready ? '已启用' : '待配置'
                 const statusTone = !item.enabled
-                  ? 'bg-gray-100 text-gray-500'
+                  ? 'bg-slate-100 text-slate-500'
                   : item.ready
                     ? 'bg-emerald-100 text-emerald-700'
                     : 'bg-amber-100 text-amber-700'
 
                 return (
-                  <span key={item.key} className={`px-2.5 py-1 rounded-full text-xs ${statusTone}`}>
+                  <span key={item.key} className={`rounded-full px-2.5 py-1 text-xs ${statusTone}`}>
                     {item.label} · {statusText}
                   </span>
                 )
@@ -322,20 +329,20 @@ export default function IngestPage() {
             </div>
           </div>
 
-          <div className="flex flex-col sm:flex-row gap-2 shrink-0">
+          <div className="flex shrink-0 flex-col gap-2 sm:flex-row">
             <Link
               to="/settings"
-              className="px-3.5 py-2 border border-gray-200 text-sm rounded-xl text-gray-700 hover:bg-gray-50 text-center"
+              className="inline-flex h-8 items-center justify-center rounded-lg border border-slate-200 bg-white px-3 text-xs font-medium text-slate-600 transition-colors hover:border-slate-300 hover:bg-slate-50"
             >
               配置数据源
             </Link>
             <button
               onClick={handleCollect}
               disabled={isCollecting || !!collectDisabledReason}
-              className="px-4 py-2 bg-blue-600 text-white text-sm rounded-xl hover:bg-blue-700 disabled:opacity-50 flex items-center justify-center gap-2"
+              className="inline-flex h-8 items-center justify-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 text-xs font-medium text-slate-600 transition-colors hover:border-slate-300 hover:bg-slate-50 disabled:opacity-50"
             >
               {isCollecting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Sparkles className="w-4 h-4" />}
-              {isMcpCollecting ? '补充内网明细...' : collectMut.isPending ? '采集中...' : '一键采集数据'}
+              {isMcpCollecting ? '补充内网明细...' : collectMut.isPending ? '采集中...' : '手动补采'}
             </button>
           </div>
         </div>
@@ -345,7 +352,7 @@ export default function IngestPage() {
         )}
 
         {mcpProgress.status !== 'idle' && (
-          <div className={`mt-4 rounded-xl border px-3 py-3 ${
+          <div className={`mt-4 rounded-lg border px-3 py-3 ${
             mcpProgress.status === 'failed'
               ? 'border-red-200 bg-red-50/70'
               : mcpProgress.status === 'done'
@@ -353,13 +360,13 @@ export default function IngestPage() {
                 : 'border-blue-200 bg-blue-50/70'
           }`}>
             <div className="flex items-center justify-between gap-3">
-              <p className="text-sm font-medium text-gray-800">Chrome 内网明细</p>
-              <span className="text-xs text-gray-500">
+              <p className="text-sm font-medium text-slate-800">Chrome 内网明细</p>
+              <span className="text-xs text-slate-500">
                 {mcpProgress.status === 'running' ? `第 ${mcpProgress.batch + 1} 批进行中` : mcpProgress.status === 'done' ? '已完成' : '采集失败'}
               </span>
             </div>
-            <p className="text-xs text-gray-500 mt-1">{mcpProgress.message}</p>
-            <div className="flex flex-wrap gap-2 mt-2 text-xs text-gray-500">
+            <p className="text-xs text-slate-500 mt-1">{mcpProgress.message}</p>
+            <div className="flex flex-wrap gap-2 mt-2 text-xs text-slate-500">
               <span>已抓取 {mcpProgress.captured} 页</span>
               <span>新增 {mcpProgress.imported} 条</span>
               <span>更新 {mcpProgress.updated} 条</span>
@@ -371,12 +378,12 @@ export default function IngestPage() {
         {collectMut.data?.source_results?.length ? (
           <div className="grid gap-2 md:grid-cols-2 mt-4">
             {collectMut.data.source_results.map(result => (
-              <div key={result.source} className={`rounded-xl border px-3 py-3 ${getCollectResultTone(result)}`}>
+              <div key={result.source} className={`rounded-lg border px-3 py-3 ${getCollectResultTone(result)}`}>
                 <div className="flex items-center justify-between gap-2">
-                  <p className="text-sm font-medium text-gray-800">{result.label}</p>
-                  <span className="text-xs text-gray-500">{getCollectResultStatus(result)}</span>
+                  <p className="text-sm font-medium text-slate-800">{result.label}</p>
+                  <span className="text-xs text-slate-500">{getCollectResultStatus(result)}</span>
                 </div>
-                <p className="text-xs text-gray-500 mt-1">
+                <p className="text-xs text-slate-500 mt-1">
                   {result.imported_count > 0
                     ? `导入 ${result.imported_count} 条${result.skipped_count ? `，跳过 ${result.skipped_count} 条重复记录` : ''}`
                     : result.message ?? '本次没有新增数据'}
@@ -395,9 +402,9 @@ export default function IngestPage() {
             ))}
           </div>
         ) : null}
-      </div>
+      </section>
 
-      <div className="bg-white rounded-xl border border-gray-200 p-5">
+      <section className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
         <div className="flex items-center justify-between mb-4 gap-3 flex-wrap">
           <div className="flex items-center gap-1">
             {[
@@ -412,7 +419,7 @@ export default function IngestPage() {
                 key={filter.value}
                 onClick={() => setSource(filter.value)}
                 className={`px-2.5 py-1 text-xs rounded-md transition-colors ${
-                  source === filter.value ? 'bg-blue-600 text-white' : 'text-gray-500 hover:bg-gray-100'
+                  source === filter.value ? 'bg-blue-600 text-white' : 'text-slate-500 hover:bg-slate-100'
                 }`}
               >
                 {filter.label}
@@ -424,41 +431,41 @@ export default function IngestPage() {
               type="date"
               value={date}
               onChange={e => setDate(e.target.value)}
-              className="px-2.5 py-1.5 border border-gray-200 rounded-lg text-xs focus:ring-1 focus:ring-blue-500 outline-none"
+              className="h-8 rounded-lg border border-slate-200 bg-white px-2.5 text-xs text-slate-700 outline-none focus:border-blue-300 focus:ring-2 focus:ring-blue-100"
             />
-            <span className="text-xs text-gray-400">共 {eventsData?.total ?? 0} 条</span>
+            <span className="text-xs text-slate-400">共 {eventsData?.total ?? 0} 条</span>
           </div>
         </div>
 
         {eventsLoading ? (
-          <div className="flex justify-center py-8"><Loader2 className="w-5 h-5 animate-spin text-gray-400" /></div>
+          <div className="flex justify-center py-8"><Loader2 className="w-5 h-5 animate-spin text-slate-400" /></div>
         ) : eventsData?.items.length === 0 ? (
-          <p className="text-center text-sm text-gray-400 py-8">该日期暂无数据</p>
+          <p className="text-center text-sm text-slate-400 py-8">该日期暂无数据</p>
         ) : (
           <div className="space-y-0.5">
             {eventsData?.items.map((ev: ActivityEvent & { visit_count?: number }) => {
               const isAgg = ev.id?.startsWith('agg-')
               return (
-                <div key={ev.id} className={`px-3 py-2.5 rounded-lg hover:bg-gray-50 transition-colors ${isAgg ? 'border-l-2 border-emerald-300' : ''}`}>
-                  <div className="flex items-center gap-4">
-                    <span className="text-xs text-gray-400 w-12 shrink-0 font-mono">{ev.timestamp.slice(11, 16)}</span>
-                    <span className={`text-sm flex-1 truncate ${isAgg ? 'font-medium text-emerald-700' : 'text-gray-800'}`}>{ev.title}</span>
+                <div key={ev.id} className={`rounded-lg px-3 py-2.5 transition-colors hover:bg-slate-50 ${isAgg ? 'border-l-2 border-emerald-300' : ''}`}>
+                  <div className="flex flex-wrap items-center gap-x-4 gap-y-1">
+                    <span className="w-12 shrink-0 font-mono text-xs text-slate-400">{ev.timestamp.slice(11, 16)}</span>
+                    <span className={`min-w-0 basis-[calc(100%-4rem)] truncate text-sm sm:basis-auto sm:flex-1 ${isAgg ? 'font-medium text-emerald-700' : 'text-slate-800'}`}>{ev.title}</span>
                     {isAgg && ev.visit_count && (
                       <span className="text-xs bg-emerald-100 text-emerald-700 px-2 py-0.5 rounded-full shrink-0">{ev.visit_count} 次</span>
                     )}
-                    {!isAgg && <span className="text-xs text-gray-400 shrink-0">{SOURCE_LABELS[ev.source] ?? ev.source}</span>}
+                    {!isAgg && <span className="shrink-0 text-xs text-slate-400">{SOURCE_LABELS[ev.source] ?? ev.source}</span>}
                     {ev.analysis && (
-                      <span className={`text-xs px-2 py-0.5 rounded-full shrink-0 ${CATEGORY_COLORS[ev.analysis.category] ?? 'bg-gray-100 text-gray-600'}`}>
+                      <span className={`shrink-0 rounded-full px-2 py-0.5 text-xs ${CATEGORY_COLORS[ev.analysis.category] ?? 'bg-slate-100 text-slate-600'}`}>
                         {ev.analysis.category}
                       </span>
                     )}
                     {ev.duration_minutes && (
-                      <span className="text-xs text-gray-400 shrink-0 flex items-center gap-1"><Clock className="w-3 h-3" />{ev.duration_minutes}m</span>
+                      <span className="flex shrink-0 items-center gap-1 text-xs text-slate-400"><Clock className="w-3 h-3" />{ev.duration_minutes}m</span>
                     )}
                   </div>
                   {(ev.content || ev.url) && (
                     <div className="ml-16 mt-1">
-                      {ev.content && <p className="text-xs text-gray-500 line-clamp-2">{ev.content}</p>}
+                      {ev.content && <p className="line-clamp-2 text-xs text-slate-500">{ev.content}</p>}
                       {ev.url && <a href={ev.url} target="_blank" rel="noreferrer" className="text-xs text-blue-400 hover:text-blue-600 truncate block">{ev.url}</a>}
                     </div>
                   )}
@@ -467,21 +474,21 @@ export default function IngestPage() {
             })}
           </div>
         )}
-      </div>
+      </section>
 
       {isManualOpen && (
         <div className="fixed inset-0 z-40">
           <div className="absolute inset-0 bg-slate-900/20 backdrop-blur-[1px]" onClick={() => setIsManualOpen(false)} />
-          <div className="absolute inset-y-0 right-0 w-full max-w-md bg-white border-l border-gray-200 shadow-2xl flex flex-col">
-            <div className="flex items-start justify-between gap-3 px-5 py-4 border-b border-gray-100">
+          <div className="absolute inset-y-0 right-0 flex w-full max-w-md flex-col border-l border-slate-200 bg-white shadow-2xl">
+            <div className="flex items-start justify-between gap-3 border-b border-slate-100 px-5 py-4">
               <div className="flex items-start gap-2">
                 <HoverHint
                   icon={<PenLine className="w-4 h-4 text-violet-500 mt-0.5" />}
                   text="补漏或纠错时再用，适合补录线下沟通、临时电话、深度工作和自动采集遗漏的信息。"
                 />
-                <p className="text-base font-semibold text-gray-900">补记一条</p>
+                <p className="text-base font-semibold text-slate-900">补记一条</p>
               </div>
-              <button onClick={() => setIsManualOpen(false)} className="shrink-0 p-1.5 rounded-lg text-gray-400 hover:text-gray-600 hover:bg-gray-100">
+              <button onClick={() => setIsManualOpen(false)} className="shrink-0 rounded-lg p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-600">
                 <X className="w-4 h-4" />
               </button>
             </div>
@@ -492,31 +499,31 @@ export default function IngestPage() {
                   type="datetime-local"
                   value={form.timestamp}
                   onChange={e => setForm({ ...form, timestamp: e.target.value })}
-                  className="w-full px-3 py-2 border border-gray-200 rounded-xl text-sm focus:ring-1 focus:ring-blue-500 focus:border-blue-500 outline-none"
+                  className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-800 outline-none focus:border-blue-300 focus:ring-2 focus:ring-blue-100"
                 />
                 <input
                   placeholder="标题"
                   value={form.title}
                   onChange={e => setForm({ ...form, title: e.target.value })}
-                  className="w-full px-3 py-2 border border-gray-200 rounded-xl text-sm focus:ring-1 focus:ring-blue-500 focus:border-blue-500 outline-none"
+                  className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-800 outline-none focus:border-blue-300 focus:ring-2 focus:ring-blue-100"
                 />
                 <textarea
                   placeholder="内容（可选）"
                   value={form.content}
                   onChange={e => setForm({ ...form, content: e.target.value })}
                   rows={4}
-                  className="w-full px-3 py-2 border border-gray-200 rounded-xl text-sm focus:ring-1 focus:ring-blue-500 focus:border-blue-500 outline-none resize-none"
+                  className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-800 outline-none resize-none focus:border-blue-300 focus:ring-2 focus:ring-blue-100"
                 />
                 <input
                   type="number"
                   placeholder="时长（分钟）"
                   value={form.duration_minutes ?? ''}
                   onChange={e => setForm({ ...form, duration_minutes: Number(e.target.value) })}
-                  className="w-full px-3 py-2 border border-gray-200 rounded-xl text-sm focus:ring-1 focus:ring-blue-500 focus:border-blue-500 outline-none"
+                  className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-800 outline-none focus:border-blue-300 focus:ring-2 focus:ring-blue-100"
                 />
                 <button
                   onClick={addEntry}
-                  className="w-full py-2 bg-gray-100 text-gray-700 text-sm rounded-xl hover:bg-gray-200 flex items-center justify-center gap-1.5"
+                  className="flex w-full items-center justify-center gap-1.5 rounded-lg bg-slate-100 py-2 text-sm text-slate-700 hover:bg-slate-200"
                 >
                   <Plus className="w-4 h-4" />
                   添加到待提交列表
@@ -526,19 +533,19 @@ export default function IngestPage() {
               {entries.length > 0 && (
                 <div className="mt-5">
                   <div className="flex items-center justify-between mb-2">
-                    <p className="text-sm font-medium text-gray-800">待提交记录</p>
-                    <span className="text-xs text-gray-400">{entries.length} 条</span>
+                    <p className="text-sm font-medium text-slate-800">待提交记录</p>
+                    <span className="text-xs text-slate-400">{entries.length} 条</span>
                   </div>
                   <div className="space-y-2">
                     {entries.map((entry, index) => (
-                      <div key={`${entry.timestamp}-${index}`} className="rounded-xl border border-gray-100 bg-gray-50 px-3 py-2.5">
+                      <div key={`${entry.timestamp}-${index}`} className="rounded-lg border border-slate-100 bg-slate-50 px-3 py-2.5">
                         <div className="flex items-start justify-between gap-2">
                           <div className="min-w-0">
-                            <p className="text-sm font-medium text-gray-800 truncate">{entry.title}</p>
-                            <p className="text-xs text-gray-400 mt-1">{entry.timestamp.replace('T', ' ')}</p>
-                            {entry.content && <p className="text-xs text-gray-500 mt-1 line-clamp-2">{entry.content}</p>}
+                            <p className="truncate text-sm font-medium text-slate-800">{entry.title}</p>
+                            <p className="mt-1 text-xs text-slate-400">{entry.timestamp.replace('T', ' ')}</p>
+                            {entry.content && <p className="mt-1 line-clamp-2 text-xs text-slate-500">{entry.content}</p>}
                           </div>
-                          <button onClick={() => setEntries(entries.filter((_, itemIndex) => itemIndex !== index))} className="shrink-0 text-gray-300 hover:text-red-500">
+                          <button onClick={() => setEntries(entries.filter((_, itemIndex) => itemIndex !== index))} className="shrink-0 text-slate-300 hover:text-red-500">
                             <Trash2 className="w-3.5 h-3.5" />
                           </button>
                         </div>
@@ -549,17 +556,17 @@ export default function IngestPage() {
               )}
             </div>
 
-            <div className="px-5 py-4 border-t border-gray-100 flex items-center gap-2">
+            <div className="flex items-center gap-2 border-t border-slate-100 px-5 py-4">
               <button
                 onClick={() => setIsManualOpen(false)}
-                className="flex-1 py-2.5 border border-gray-200 text-gray-600 text-sm rounded-xl hover:bg-gray-50"
+                className="flex-1 rounded-lg border border-slate-200 py-2.5 text-sm text-slate-600 hover:bg-slate-50"
               >
                 先收起
               </button>
               <button
                 onClick={submitManual}
                 disabled={manualMut.isPending || entries.length === 0}
-                className="flex-1 py-2.5 bg-violet-600 text-white text-sm rounded-xl hover:bg-violet-700 disabled:opacity-50 flex items-center justify-center gap-2"
+                className="flex flex-1 items-center justify-center gap-2 rounded-lg bg-violet-600 py-2.5 text-sm text-white hover:bg-violet-700 disabled:opacity-50"
               >
                 {manualMut.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : <PenLine className="w-4 h-4" />}
                 {manualMut.isPending ? '提交中...' : `提交 ${entries.length} 条`}

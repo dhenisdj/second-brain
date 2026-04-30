@@ -4,7 +4,7 @@ import { useRecentJobs } from '../hooks/queries'
 import type { AppJob } from '../types'
 
 const STATUS_STYLES: Record<string, string> = {
-  idle: 'bg-gray-100 text-gray-500',
+  idle: 'bg-slate-100 text-slate-500',
   pending: 'bg-amber-50 text-amber-700',
   running: 'bg-blue-50 text-blue-700',
   completed: 'bg-emerald-50 text-emerald-700',
@@ -31,8 +31,12 @@ function getJobMeta(job: AppJob) {
       return { label: date ? `${date} 图谱刷新` : '图谱刷新', icon: <Network className="w-4 h-4 text-violet-600" /> }
     case 'graph.rebuild':
       return { label: '全量图谱重建', icon: <Network className="w-4 h-4 text-violet-600" /> }
+    case 'daily.pipeline':
+      return { label: date ? `${date} 数据总结 + 次日计划` : '每日自动流程', icon: <Clock3 className="w-4 h-4 text-cyan-600" /> }
+    case 'day.refresh':
+      return { label: date ? `${date} 当天采集总结刷新` : '当天刷新', icon: <Sparkles className="w-4 h-4 text-cyan-600" /> }
     default:
-      return { label: job.job_type, icon: <Clock3 className="w-4 h-4 text-gray-500" /> }
+      return { label: job.job_type, icon: <Clock3 className="w-4 h-4 text-slate-500" /> }
   }
 }
 
@@ -56,7 +60,20 @@ export default function RecentJobsPanel() {
   const hasFailedJobs = items.some(job => job.status === 'failed')
   const activeCount = items.filter(job => job.status === 'pending' || job.status === 'running').length
   const [expanded, setExpanded] = useState(false)
+  const [canAutoExpand, setCanAutoExpand] = useState(() => window.matchMedia('(min-width: 640px)').matches)
   const prevHasActiveJobs = useRef(false)
+
+  useEffect(() => {
+    const media = window.matchMedia('(min-width: 640px)')
+    const handleChange = () => {
+      setCanAutoExpand(media.matches)
+      if (!media.matches) setExpanded(false)
+    }
+
+    handleChange()
+    media.addEventListener('change', handleChange)
+    return () => media.removeEventListener('change', handleChange)
+  }, [])
 
   useEffect(() => {
     if (items.length === 0) {
@@ -65,14 +82,14 @@ export default function RecentJobsPanel() {
       return
     }
 
-    if (hasActiveJobs && !prevHasActiveJobs.current) {
+    if (hasActiveJobs && !prevHasActiveJobs.current && canAutoExpand) {
       setExpanded(true)
     } else if (!hasActiveJobs && prevHasActiveJobs.current) {
       setExpanded(false)
     }
 
     prevHasActiveJobs.current = hasActiveJobs
-  }, [hasActiveJobs, items.length])
+  }, [canAutoExpand, hasActiveJobs, items.length])
 
   if (items.length === 0) return null
 
@@ -108,11 +125,11 @@ export default function RecentJobsPanel() {
   }
 
   return (
-    <section className="fixed bottom-6 right-6 z-30 w-[380px] max-w-[calc(100vw-2rem)] overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-2xl">
-      <div className="flex items-start justify-between gap-3 border-b border-gray-100 px-4 py-3">
+    <section className="fixed bottom-6 right-6 z-30 w-[380px] max-w-[calc(100vw-2rem)] overflow-hidden rounded-lg border border-slate-200 bg-white shadow-2xl">
+      <div className="flex items-start justify-between gap-3 border-b border-slate-100 px-4 py-3">
         <div>
-          <p className="text-sm font-semibold text-gray-900">后台任务</p>
-          <p className="text-xs text-gray-500">
+          <p className="text-sm font-semibold text-slate-900">后台任务</p>
+          <p className="text-xs text-slate-500">
             {hasActiveJobs
               ? `${activeCount} 个任务正在执行`
               : hasFailedJobs
@@ -122,7 +139,7 @@ export default function RecentJobsPanel() {
         </div>
         <button
           onClick={() => setExpanded(false)}
-          className="rounded-lg p-1.5 text-gray-400 transition-colors hover:bg-gray-100 hover:text-gray-600"
+          className="rounded-lg p-1.5 text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-600"
           aria-label="收起后台任务面板"
         >
           <ChevronDown className="w-4 h-4" />
@@ -134,13 +151,13 @@ export default function RecentJobsPanel() {
           {items.map(job => {
             const meta = getJobMeta(job)
             return (
-              <div key={job.id ?? `${job.job_type}-${job.updated_at}`} className="rounded-xl border border-gray-100 bg-gray-50 px-3 py-2.5">
+              <div key={job.id ?? `${job.job_type}-${job.updated_at}`} className="rounded-lg border border-slate-100 bg-slate-50 px-3 py-2.5">
                 <div className="flex items-start justify-between gap-3">
                   <div className="flex min-w-0 items-start gap-2">
                     <div className="mt-0.5 shrink-0">{meta.icon}</div>
                     <div className="min-w-0">
-                      <p className="truncate text-sm font-medium text-gray-800">{meta.label}</p>
-                      <p className="text-xs text-gray-500">{job.updated_at ? new Date(job.updated_at).toLocaleString() : '刚刚更新'}</p>
+                      <p className="truncate text-sm font-medium text-slate-800">{meta.label}</p>
+                      <p className="text-xs text-slate-500">{job.updated_at ? new Date(job.updated_at).toLocaleString() : '刚刚更新'}</p>
                     </div>
                   </div>
                   <span className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-medium ${STATUS_STYLES[job.status] ?? STATUS_STYLES.idle}`}>

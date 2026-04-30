@@ -15,10 +15,10 @@ export default function Sidebar() {
   const [collapsed, setCollapsed] = useState(false)
 
   return (
-    <aside className={`${collapsed ? 'w-16' : 'w-16 sm:w-60'} h-screen bg-white border-r border-gray-200 flex flex-col transition-all duration-200 shrink-0`}>
-      <div className={`flex items-center gap-2 px-4 h-14 border-b border-gray-100 ${collapsed ? 'justify-center' : 'justify-center sm:justify-start'}`}>
+    <aside className={`${collapsed ? 'w-16' : 'w-16 sm:w-60'} h-screen bg-white border-r border-slate-200 flex flex-col transition-all duration-200 shrink-0`}>
+      <div className={`flex items-center gap-2 px-4 h-14 border-b border-slate-100 ${collapsed ? 'justify-center' : 'justify-center sm:justify-start'}`}>
         <Brain className="w-6 h-6 text-blue-600 shrink-0" />
-        {!collapsed && <span className="hidden font-semibold text-gray-800 text-sm sm:inline">多了脑子</span>}
+        {!collapsed && <span className="hidden font-semibold text-slate-800 text-sm sm:inline">多了脑子</span>}
       </div>
 
       <nav className="flex-1 py-2 space-y-0.5 px-2">
@@ -31,7 +31,7 @@ export default function Sidebar() {
               `flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm transition-colors ${
                 isActive
                   ? 'bg-blue-50 text-blue-700 font-medium'
-                  : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900'
+                  : 'text-slate-600 hover:bg-slate-50 hover:text-slate-900'
               } ${collapsed ? 'justify-center' : 'justify-center sm:justify-start'}`
             }
           >
@@ -43,7 +43,7 @@ export default function Sidebar() {
 
       <button
         onClick={() => setCollapsed(!collapsed)}
-        className="hidden sm:flex items-center justify-center h-10 border-t border-gray-100 text-gray-400 hover:text-gray-600 transition-colors"
+        className="hidden sm:flex items-center justify-center h-10 border-t border-slate-100 text-slate-400 hover:text-slate-600 transition-colors"
       >
         {collapsed ? <ChevronRight className="w-4 h-4" /> : <ChevronLeft className="w-4 h-4" />}
       </button>

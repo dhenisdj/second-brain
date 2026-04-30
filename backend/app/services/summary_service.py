@@ -83,6 +83,44 @@ def _estimate_minutes(item: dict) -> int:
     return 5
 
 
+def _safe_list(value) -> list:
+    return value if isinstance(value, list) else []
+
+
+def _parse_raw_summary_response(raw: str | None) -> dict:
+    if not raw:
+        return {}
+    try:
+        parsed = json.loads(raw)
+        return parsed if isinstance(parsed, dict) else {}
+    except Exception:
+        return {}
+
+
+def _serialize_summary_response(
+    summary: DailySummary,
+    target: date_type,
+    time_distribution: dict | None = None,
+    llm_result: dict | None = None,
+) -> dict:
+    raw = llm_result if isinstance(llm_result, dict) else _parse_raw_summary_response(summary.raw_llm_response)
+    return {
+        "id": summary.id,
+        "date": target.isoformat(),
+        "timeline_md": summary.timeline_md,
+        "progress_md": summary.progress_md,
+        "knowledge_md": summary.knowledge_md,
+        "timeline": _safe_list(raw.get("timeline")),
+        "progress": _safe_list(raw.get("progress")),
+        "knowledge": _safe_list(raw.get("knowledge")),
+        "time_distribution": (
+            time_distribution
+            if time_distribution is not None
+            else json.loads(summary.time_distribution) if summary.time_distribution else {}
+        ),
+    }
+
+
 def _normalize_topic_part(value: str | None) -> str:
     return " ".join((value or "").lower().split())[:80]
 
@@ -452,14 +490,12 @@ async def generate_summary(db: AsyncSession, date_str: str) -> dict:
     await db.commit()
     await db.refresh(summary)
 
-    return {
-        "id": summary.id,
-        "date": target.isoformat(),
-        "timeline_md": summary.timeline_md,
-        "progress_md": summary.progress_md,
-        "knowledge_md": summary.knowledge_md,
-        "time_distribution": time_dist,
-    }
+    return _serialize_summary_response(
+        summary,
+        target,
+        time_distribution=time_dist,
+        llm_result=llm_result,
+    )
 
 
 async def get_summary(db: AsyncSession, date_str: str) -> dict | None:
@@ -468,11 +504,4 @@ async def get_summary(db: AsyncSession, date_str: str) -> dict | None:
     summary = result.scalar_one_or_none()
     if not summary:
         return None
-    return {
-        "id": summary.id,
-        "date": target.isoformat(),
-        "timeline_md": summary.timeline_md,
-        "progress_md": summary.progress_md,
-        "knowledge_md": summary.knowledge_md,
-        "time_distribution": json.loads(summary.time_distribution) if summary.time_distribution else {},
-    }
+    return _serialize_summary_response(summary, target)

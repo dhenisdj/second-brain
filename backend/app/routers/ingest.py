@@ -1,4 +1,4 @@
-from datetime import date as date_type
+from datetime import date as date_type, datetime
 from typing import Optional
 from fastapi import APIRouter, Depends, UploadFile, File, HTTPException, Query
 from fastapi.concurrency import run_in_threadpool
@@ -77,6 +77,7 @@ class GitRequest(BaseModel):
 
 class ConfiguredSourcesRequest(BaseModel):
     days: int = 2
+    target_date: Optional[str] = None
 
 
 @router.post("/ingest/manual")
@@ -123,7 +124,37 @@ async def _ingest_browser_local_impl(req: BrowserLocalRequest, db: AsyncSession)
     }
 
 
-async def _ingest_single_browser_source_impl(source: str, days: int, db: AsyncSession) -> dict:
+def _timestamp_date(value: str | None) -> str | None:
+    if not value:
+        return None
+    try:
+        return datetime.fromisoformat(value.replace("Z", "+00:00")).date().isoformat()
+    except ValueError:
+        return None
+
+
+def _filter_collected_events_by_date(collected: dict, target_date: str | None) -> dict:
+    if not target_date:
+        return collected
+
+    filtered_events = [
+        event
+        for event in collected.get("events", [])
+        if _timestamp_date(event.get("timestamp") or event.get("visit_time")) == target_date
+    ]
+    return {
+        **collected,
+        "events": filtered_events,
+        "date_range": [target_date, target_date] if filtered_events else [],
+    }
+
+
+async def _ingest_single_browser_source_impl(
+    source: str,
+    days: int,
+    db: AsyncSession,
+    target_date: str | None = None,
+) -> dict:
     collectors = {
         "chrome": collect_chrome_history,
         "safari": collect_safari_history,
@@ -138,6 +169,8 @@ async def _ingest_single_browser_source_impl(source: str, days: int, db: AsyncSe
         raise HTTPException(status_code=403, detail=str(e))
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"{source.capitalize()} 历史记录采集失败: {e}")
+
+    collected = _filter_collected_events_by_date(collected, target_date)
 
     if not collected["events"]:
         return {
@@ -256,7 +289,7 @@ async def ingest_chrome_devtools_history(req: ChromeDevtoolsHistoryRequest, db: 
     }
 
 
-async def _ingest_gcal_impl(req: GCalRequest, db: AsyncSession) -> dict:
+async def _ingest_gcal_impl(req: GCalRequest, db: AsyncSession, target_date: str | None = None) -> dict:
     from app.routers.settings import _get_all_settings
 
     settings = await _get_all_settings(db)
@@ -275,6 +308,8 @@ async def _ingest_gcal_impl(req: GCalRequest, db: AsyncSession) -> dict:
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Google Calendar 采集失败: {e}")
 
+    collected = _filter_collected_events_by_date(collected, target_date)
+
     if not collected["events"]:
         return {"imported_count": 0, "date_range": []}
 
@@ -285,7 +320,7 @@ async def _ingest_gcal_impl(req: GCalRequest, db: AsyncSession) -> dict:
     }
 
 
-async def _ingest_gmail_impl(req: GmailRequest, db: AsyncSession) -> dict:
+async def _ingest_gmail_impl(req: GmailRequest, db: AsyncSession, target_date: str | None = None) -> dict:
     from app.routers.settings import _get_all_settings
 
     settings = await _get_all_settings(db)
@@ -303,6 +338,8 @@ async def _ingest_gmail_impl(req: GmailRequest, db: AsyncSession) -> dict:
         raise HTTPException(status_code=400, detail=e.to_detail())
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Gmail 采集失败: {e}")
+
+    collected = _filter_collected_events_by_date(collected, target_date)
 
     if not collected["events"]:
         return {"imported_count": 0, "skipped_count": 0, "date_range": []}
@@ -355,7 +392,12 @@ async def ingest_gmail(req: GmailRequest, db: AsyncSession = Depends(get_db)):
     return await _ingest_gmail_impl(req, db)
 
 
-async def _ingest_git_impl(req: GitRequest, db: AsyncSession, settings: dict | None = None) -> dict:
+async def _ingest_git_impl(
+    req: GitRequest,
+    db: AsyncSession,
+    settings: dict | None = None,
+    target_date: str | None = None,
+) -> dict:
     if settings is None:
         from app.routers.settings import _get_all_settings
 
@@ -386,6 +428,8 @@ async def _ingest_git_impl(req: GitRequest, db: AsyncSession, settings: dict | N
         detail = "；".join(collected.get("warnings", [])) or "未读取到有效 Git 仓库"
         raise HTTPException(status_code=400, detail=detail)
 
+    collected = _filter_collected_events_by_date(collected, target_date)
+
     if not collected["events"]:
         return {
             "imported_count": 0,
@@ -413,6 +457,14 @@ async def ingest_git(req: GitRequest, db: AsyncSession = Depends(get_db)):
 async def ingest_configured_sources(req: ConfiguredSourcesRequest, db: AsyncSession = Depends(get_db)):
     from app.routers.settings import _get_all_settings
 
+    target_date = None
+    if req.target_date:
+        try:
+            date_type.fromisoformat(req.target_date)
+        except ValueError:
+            raise HTTPException(status_code=422, detail="Invalid target_date format. Use YYYY-MM-DD.")
+        target_date = req.target_date
+
     settings = await _get_all_settings(db)
     chrome_enabled = settings.get("chrome_history_enabled", settings.get("browser_history_enabled", True))
     safari_enabled = settings.get("safari_history_enabled", settings.get("browser_history_enabled", True))
@@ -435,7 +487,7 @@ async def ingest_configured_sources(req: ConfiguredSourcesRequest, db: AsyncSess
     ):
         if enabled:
             try:
-                browser_result = await _ingest_single_browser_source_impl(source, req.days, db)
+                browser_result = await _ingest_single_browser_source_impl(source, req.days, db, target_date=target_date)
                 imported_count += browser_result.get("imported_count", 0)
                 skipped_count += browser_result.get("skipped_count", 0)
                 date_ranges.append(browser_result.get("date_range", []))
@@ -500,7 +552,12 @@ async def ingest_configured_sources(req: ConfiguredSourcesRequest, db: AsyncSess
             })
         else:
             try:
-                git_result = await _ingest_git_impl(GitRequest(days=req.days), db, settings=settings)
+                git_result = await _ingest_git_impl(
+                    GitRequest(days=req.days),
+                    db,
+                    settings=settings,
+                    target_date=target_date,
+                )
                 imported_count += git_result.get("imported_count", 0)
                 skipped_count += git_result.get("skipped_count", 0)
                 date_ranges.append(git_result.get("date_range", []))
@@ -588,7 +645,11 @@ async def ingest_configured_sources(req: ConfiguredSourcesRequest, db: AsyncSess
             _append_google_misconfigured_source("gcal", "Google 日历", message)
         else:
             try:
-                gcal_result = await _ingest_gcal_impl(GCalRequest(days=req.days, user_email=user_email), db)
+                gcal_result = await _ingest_gcal_impl(
+                    GCalRequest(days=req.days, user_email=user_email),
+                    db,
+                    target_date=target_date,
+                )
                 imported_count += gcal_result.get("imported_count", 0)
                 date_ranges.append(gcal_result.get("date_range", []))
                 source_results.append({
@@ -635,7 +696,11 @@ async def ingest_configured_sources(req: ConfiguredSourcesRequest, db: AsyncSess
             _append_google_misconfigured_source("gmail", "Gmail", message)
         else:
             try:
-                gmail_result = await _ingest_gmail_impl(GmailRequest(days=req.days, user_email=user_email), db)
+                gmail_result = await _ingest_gmail_impl(
+                    GmailRequest(days=req.days, user_email=user_email),
+                    db,
+                    target_date=target_date,
+                )
                 imported_count += gmail_result.get("imported_count", 0)
                 skipped_count += gmail_result.get("skipped_count", 0)
                 date_ranges.append(gmail_result.get("date_range", []))

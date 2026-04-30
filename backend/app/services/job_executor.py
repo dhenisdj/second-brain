@@ -1,10 +1,17 @@
 import asyncio
+import json
 import logging
+from datetime import date as date_type, datetime
+
+from fastapi import HTTPException
+from sqlalchemy import func, select
 
 from app.database import get_session_factory
+from app.models.event import Event
 from app.services import analysis_service, graph_service, plan_service, summary_service
 from app.services.llm_service import LLMTimeoutError
 from app.services import job_service
+from app.routers.ingest import ConfiguredSourcesRequest, ingest_configured_sources
 
 logger = logging.getLogger(__name__)
 _running_tasks: dict[str, asyncio.Task] = {}
@@ -39,11 +46,78 @@ async def _handle_graph_rebuild(db, _payload: dict) -> dict:
     return await graph_service.rebuild_graph(db)
 
 
+async def _collect_and_summarize(db, date_str: str, collect_days: int) -> dict:
+    try:
+        collection_result = await ingest_configured_sources(
+            ConfiguredSourcesRequest(days=collect_days, target_date=date_str),
+            db,
+        )
+    except HTTPException as exc:
+        detail = exc.detail
+        if isinstance(detail, dict):
+            detail = json.dumps(detail, ensure_ascii=False)
+        raise ValueError(str(detail)) from exc
+
+    target = date_type.fromisoformat(date_str)
+    start = datetime.combine(target, datetime.min.time())
+    end = datetime.combine(target, datetime.max.time())
+    event_count = await db.scalar(
+        select(func.count(Event.id)).where(Event.timestamp >= start, Event.timestamp <= end)
+    )
+
+    if not event_count:
+        skipped = {
+            "status": "skipped",
+            "reason": "No events found for this date.",
+        }
+        return {
+            "date": date_str,
+            "event_count": 0,
+            "collection": collection_result,
+            "summary": skipped,
+        }
+
+    summary_result = await _handle_summary_generate(db, {"date": date_str})
+    return {
+        "date": date_str,
+        "event_count": event_count,
+        "collection": collection_result,
+        "summary": summary_result,
+    }
+
+
+async def _handle_daily_pipeline(db, payload: dict) -> dict:
+    date_str = payload["date"]
+    collect_days = int(payload.get("collect_days") or 2)
+    result = await _collect_and_summarize(db, date_str, collect_days)
+
+    if result.get("summary", {}).get("status") == "skipped":
+        result["plan"] = {
+            "status": "skipped",
+            "reason": "No events found for this date.",
+        }
+        return result
+
+    plan_result = await _handle_plan_generate(db, {"date": date_str})
+    return {
+        **result,
+        "plan": plan_result,
+    }
+
+
+async def _handle_day_refresh(db, payload: dict) -> dict:
+    date_str = payload["date"]
+    collect_days = int(payload.get("collect_days") or 1)
+    return await _collect_and_summarize(db, date_str, collect_days)
+
+
 _JOB_HANDLERS = {
     job_service.JOB_TYPE_SUMMARY_GENERATE: _handle_summary_generate,
     job_service.JOB_TYPE_PLAN_GENERATE: _handle_plan_generate,
     job_service.JOB_TYPE_GRAPH_REFRESH: _handle_graph_refresh,
     job_service.JOB_TYPE_GRAPH_REBUILD: _handle_graph_rebuild,
+    job_service.JOB_TYPE_DAILY_PIPELINE: _handle_daily_pipeline,
+    job_service.JOB_TYPE_DAY_REFRESH: _handle_day_refresh,
 }
 
 

@@ -69,7 +69,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, 
         environment["SECOND_BRAIN_SERVE_FRONTEND"] = "1"
         environment["SECOND_BRAIN_FRONTEND_DIR"] = frontendURL.path
         environment["SECOND_BRAIN_CREDENTIALS_DIR"] = credentialsURL.path
-        environment["DATABASE_URL"] = "sqlite+aiosqlite:///\(appSupportURL.appendingPathComponent("second_brain.db").path)"
+        environment["DATABASE_URL"] = databaseURL(resourcesURL: resourcesURL, appSupportURL: appSupportURL)
         environment["PATH"] = "\(backendURL.appendingPathComponent("venv/bin").path):\(environment["PATH"] ?? "/usr/bin:/bin")"
         process.environment = environment
 
@@ -163,7 +163,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, 
         let webView = WKWebView(frame: .zero, configuration: configuration)
         webView.navigationDelegate = self
         webView.uiDelegate = self
-        webView.load(URLRequest(url: URL(string: "http://127.0.0.1:\(port)/")!))
+        let cacheBuster = Int(Date().timeIntervalSince1970)
+        let appURL = URL(string: "http://127.0.0.1:\(port)/?appBuild=\(cacheBuster)")!
+        let request = URLRequest(url: appURL, cachePolicy: .reloadIgnoringLocalAndRemoteCacheData, timeoutInterval: 30)
+        webView.load(request)
         self.webView = webView
 
         let window = NSWindow(
@@ -246,6 +249,36 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, 
         let appURL = baseURL.appendingPathComponent("Second Brain", isDirectory: true)
         try FileManager.default.createDirectory(at: appURL, withIntermediateDirectories: true)
         return appURL
+    }
+
+    private func databaseURL(resourcesURL: URL, appSupportURL: URL) -> String {
+        if let projectURL = projectRootURL(from: resourcesURL) {
+            let candidates = [
+                projectURL.appendingPathComponent(".local/private/database/second_brain.db"),
+                projectURL.appendingPathComponent("backend/second_brain.db"),
+            ]
+
+            for candidate in candidates where FileManager.default.fileExists(atPath: candidate.path) {
+                return "sqlite+aiosqlite:///\(candidate.path)"
+            }
+        }
+
+        return "sqlite+aiosqlite:///\(appSupportURL.appendingPathComponent("second_brain.db").path)"
+    }
+
+    private func projectRootURL(from resourcesURL: URL) -> URL? {
+        var url = resourcesURL
+        for _ in 0..<5 {
+            url.deleteLastPathComponent()
+        }
+
+        let frontendPackage = url.appendingPathComponent("frontend/package.json")
+        let backendApp = url.appendingPathComponent("backend/app/main.py")
+        guard FileManager.default.fileExists(atPath: frontendPackage.path),
+              FileManager.default.fileExists(atPath: backendApp.path) else {
+            return nil
+        }
+        return url
     }
 
     private func showFatalError(_ title: String, _ message: String) {

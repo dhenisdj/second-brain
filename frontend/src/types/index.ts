@@ -70,7 +70,33 @@ export interface DailySummary {
   timeline_md: string
   progress_md: string
   knowledge_md: string
+  timeline?: SummaryTimelineItem[]
+  progress?: SummaryProgressGroup[]
+  knowledge?: SummaryKnowledgeItem[]
   time_distribution: Record<string, number>
+}
+
+export interface SummaryTimelineItem {
+  time: string
+  title: string
+  summary?: string
+  category?: 'work' | 'study' | 'life' | 'entertainment' | string
+  items?: string[]
+}
+
+export interface SummaryProgressGroup {
+  project: string
+  progress?: string[]
+  issues?: string[]
+  risks?: string[]
+  next_steps?: string[]
+}
+
+export interface SummaryKnowledgeItem {
+  topic: string
+  summary?: string
+  takeaways?: string[]
+  evidence?: string
 }
 
 export type JobStatus = 'idle' | 'pending' | 'running' | 'completed' | 'failed'

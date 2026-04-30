@@ -548,7 +548,7 @@ export default function KnowledgePage() {
   }, [])
 
   return (
-    <div className="space-y-4">
+    <div className="min-w-0 max-w-full space-y-4 overflow-hidden">
       <section className="rounded-lg border border-slate-200 bg-white px-4 py-4 shadow-sm">
         <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
           <div className="flex items-center gap-3">

@@ -10,9 +10,22 @@ from fastapi.staticfiles import StaticFiles
 
 from app.database import init_db
 from app.routers import ingest, analysis, summary, knowledge, plan, settings, data_manage, jobs
+from app.services.daily_scheduler import shutdown_daily_scheduler, start_daily_scheduler
 from app.services.job_executor import resume_incomplete_jobs, shutdown_job_executor
 
 logger = logging.getLogger(__name__)
+
+FRONTEND_NO_CACHE_HEADERS = {
+    "Cache-Control": "no-store, max-age=0",
+    "Pragma": "no-cache",
+    "Expires": "0",
+}
+
+
+def _frontend_file_response(path: Path) -> FileResponse:
+    response = FileResponse(path)
+    response.headers.update(FRONTEND_NO_CACHE_HEADERS)
+    return response
 
 
 def _serve_frontend_enabled() -> bool:
@@ -75,7 +88,9 @@ async def lifespan(app: FastAPI):
     await init_db()
     await _load_llm_from_db()
     await resume_incomplete_jobs()
+    start_daily_scheduler()
     yield
+    await shutdown_daily_scheduler()
     await shutdown_job_executor()
 
 
@@ -151,7 +166,7 @@ async def root(request: Request):
         return _render_google_oauth_callback(request)
 
     if _serve_frontend_enabled() and _frontend_index().exists():
-        return FileResponse(_frontend_index())
+        return _frontend_file_response(_frontend_index())
     return {"name": "AI Second Brain", "version": "0.1.0"}
 
 
@@ -171,10 +186,10 @@ async def serve_frontend(full_path: str):
         raise HTTPException(status_code=404, detail="Not found")
 
     if candidate.is_file():
-        return FileResponse(candidate)
+        return _frontend_file_response(candidate)
 
     index = _frontend_index()
     if index.exists():
-        return FileResponse(index)
+        return _frontend_file_response(index)
 
     raise HTTPException(status_code=404, detail="Frontend build not found")

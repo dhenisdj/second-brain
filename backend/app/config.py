@@ -18,6 +18,14 @@ class Settings(BaseSettings):
     GRAPHITI_MCP_GROUP_ID: str = "second-brain"
     GRAPHITI_MCP_ALLOW_REMOTE: bool = False
     GRAPHITI_MCP_TIMEOUT_SECONDS: int = 60
+    DAILY_AUTOMATION_ENABLED: bool = True
+    DAILY_AUTOMATION_HOUR: int = 3
+    DAILY_AUTOMATION_MINUTE: int = 0
+    DAILY_AUTOMATION_TIMEZONE: str = "Asia/Shanghai"
+    DAILY_AUTOMATION_COLLECT_DAYS: int = 2
+    CURRENT_DAY_REFRESH_ENABLED: bool = True
+    CURRENT_DAY_REFRESH_INTERVAL_HOURS: int = 4
+    CURRENT_DAY_REFRESH_COLLECT_DAYS: int = 1
 
     model_config = {"env_file": ".env", "extra": "ignore"}
 

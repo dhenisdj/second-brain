@@ -6,3 +6,105 @@ body {
   margin: 0;
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
 }
+
+.summary-timeline.vertical-timeline {
+  width: 100%;
+  max-width: none;
+  margin: 0;
+  padding: 2px 0;
+}
+
+.summary-timeline.vertical-timeline::before {
+  left: 18px;
+  width: 2px;
+  background: linear-gradient(180deg, #38bdf8 0%, #2dd4bf 22%, #22c55e 42%, #f59e0b 62%, #fb7185 78%, #6d28d9 100%);
+}
+
+.summary-timeline .vertical-timeline-element {
+  margin: 0 0 14px;
+}
+
+.summary-timeline .vertical-timeline-element:last-child {
+  margin-bottom: 0;
+}
+
+.summary-timeline .vertical-timeline-element-icon {
+  top: 12px;
+  left: 7px;
+  width: 24px;
+  height: 24px;
+  box-shadow: 0 0 0 4px #fff, 0 8px 18px rgba(37, 99, 235, 0.16);
+}
+
+.summary-timeline-dot-core {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 6px;
+  height: 6px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.92);
+  transform: translate(-50%, -50%);
+}
+
+.summary-timeline .vertical-timeline-element-content {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  margin-left: 54px;
+  padding: 12px 14px;
+}
+
+.summary-timeline .vertical-timeline-element-content-arrow {
+  top: 18px;
+}
+
+.summary-timeline .vertical-timeline-element-content .vertical-timeline-element-date {
+  order: -1;
+  display: block;
+  float: none;
+  padding: 0 0 6px;
+  color: #64748b;
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1.2;
+  opacity: 1;
+}
+
+.summary-timeline .vertical-timeline-element-content .summary-timeline-copy {
+  margin: 0;
+  color: #334155;
+  font-size: 14px;
+  font-weight: 400;
+  line-height: 1.7;
+  overflow-wrap: anywhere;
+}
+
+.summary-timeline-details {
+  margin: 8px 0 0;
+  padding-left: 14px;
+  border-left: 1px solid #e2e8f0;
+  color: #64748b;
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+.summary-timeline-details li + li {
+  margin-top: 4px;
+}
+
+@media (max-width: 639px) {
+  .summary-timeline.vertical-timeline::before {
+    left: 16px;
+  }
+
+  .summary-timeline .vertical-timeline-element-icon {
+    left: 5px;
+  }
+
+  .summary-timeline .vertical-timeline-element-content {
+    width: calc(100vw - 190px);
+    margin-left: 48px;
+    padding: 11px 12px;
+  }
+}

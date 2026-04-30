@@ -1,7 +1,7 @@
 import json
 from datetime import datetime
 
-from sqlalchemy import select
+from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.job import Job
@@ -16,6 +16,8 @@ JOB_TYPE_SUMMARY_GENERATE = "summary.generate"
 JOB_TYPE_PLAN_GENERATE = "plan.generate"
 JOB_TYPE_GRAPH_REFRESH = "graph.refresh"
 JOB_TYPE_GRAPH_REBUILD = "graph.rebuild"
+JOB_TYPE_DAILY_PIPELINE = "daily.pipeline"
+JOB_TYPE_DAY_REFRESH = "day.refresh"
 
 
 def summary_resource_key(date_str: str) -> str:
@@ -32,6 +34,14 @@ def graph_refresh_resource_key(date_str: str) -> str:
 
 def graph_rebuild_resource_key() -> str:
     return JOB_TYPE_GRAPH_REBUILD
+
+
+def daily_pipeline_resource_key(date_str: str) -> str:
+    return f"{JOB_TYPE_DAILY_PIPELINE}:{date_str}"
+
+
+def day_refresh_resource_key(date_str: str, bucket: str) -> str:
+    return f"{JOB_TYPE_DAY_REFRESH}:{date_str}:{bucket}"
 
 
 def _dump_json(value):
@@ -133,6 +143,42 @@ async def enqueue_job(
         )
         if existing:
             return serialize_job(existing), False
+
+    job = Job(
+        job_type=job_type,
+        resource_key=resource_key,
+        status=JOB_STATUS_PENDING,
+        payload=_dump_json(payload or {}),
+    )
+    db.add(job)
+    await db.commit()
+    await db.refresh(job)
+    return serialize_job(job), True
+
+
+async def enqueue_singleton_job(
+    db: AsyncSession,
+    job_type: str,
+    payload: dict | None = None,
+    resource_key: str | None = None,
+    statuses: set[str] | None = None,
+) -> tuple[dict, bool]:
+    """Enqueue one job per resource across concurrent local backend processes."""
+    if resource_key:
+        bind = db.get_bind()
+        if bind and bind.dialect.name == "sqlite":
+            await db.execute(text("BEGIN IMMEDIATE"))
+
+        existing = await get_latest_job_by_resource(
+            db,
+            job_type=job_type,
+            resource_key=resource_key,
+            statuses=statuses,
+        )
+        if existing:
+            serialized = serialize_job(existing)
+            await db.rollback()
+            return serialized, False
 
     job = Job(
         job_type=job_type,
